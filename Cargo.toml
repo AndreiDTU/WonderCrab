@@ -1,0 +1,8 @@
+[package]
+name = "wonderswan"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = "2.9.1"
+once_cell = "1.21.3"
