@@ -3,19 +3,19 @@ use once_cell::sync::Lazy;
 use super::*;
 
 pub struct OpCode {
-    code: u8,      // First byte
-    name: String,  // Mnemonic
-    op1:  Operand, // Destination
-    op2:  Operand, // Source
-    mode: Mode,    // Amount of bits to be read
+    pub code: u8,      // First byte
+    pub name: String,  // Mnemonic
+    pub op1:  Operand, // Destination
+    pub op2:  Operand, // Source
+    pub mode: Mode,    // Amount of bits to be read
 
-    op3:  Option<Operand>, // Third source
+    pub op3:  Option<Operand>, // Third source
 }
 
 pub struct SubOpCode {
-    code: u8,
-    name: String,
-    mode: Option<Mode>
+    pub code: u8,
+    pub name: String,
+    pub mode: Option<Mode>
 }
 
 impl OpCode {
@@ -309,7 +309,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0xE2, "DBNZ",    Operand::NONE,        Operand::NONE,        Mode::M8 ),
         OpCode::one_byte(0xE3, "BCWZ",    Operand::NONE,        Operand::NONE,        Mode::M8 ),
         OpCode::one_byte(0xE4, "IN",      Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M8 ),
-        OpCode::one_byte(0xE5, "IN",      Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M8 ),
+        OpCode::one_byte(0xE5, "IN",      Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M16),
         OpCode::one_byte(0xE6, "OUT",     Operand::IMMEDIATE,   Operand::ACCUMULATOR, Mode::M8 ),
         OpCode::one_byte(0xE7, "OUT",     Operand::IMMEDIATE,   Operand::ACCUMULATOR, Mode::M8 ),
         
@@ -317,7 +317,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0xE9, "BR",      Operand::NONE,        Operand::NONE,        Mode::M16),
         OpCode::one_byte(0xEA, "BR",      Operand::NONE,        Operand::IMMEDIATE,   Mode::M32),
         OpCode::one_byte(0xEB, "BR",      Operand::NONE,        Operand::NONE,        Mode::M8 ),
-        OpCode::one_byte(0xEC, "IN",      Operand::NONE,        Operand::NONE,        Mode::M16),
+        OpCode::one_byte(0xEC, "IN",      Operand::NONE,        Operand::NONE,        Mode::M8 ),
         OpCode::one_byte(0xED, "IN",      Operand::NONE,        Operand::NONE,        Mode::M16),
         OpCode::one_byte(0xEE, "OUT",     Operand::NONE,        Operand::NONE,        Mode::M16),
         OpCode::one_byte(0xEF, "OUT",     Operand::NONE,        Operand::NONE,        Mode::M16),
