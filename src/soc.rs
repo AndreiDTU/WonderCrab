@@ -26,7 +26,7 @@ impl SoC {
         self.cpu.tick();
 
         loop {
-            if self.cpu.mem_request {
+            if self.cpu.op_request {
                 let addr = self.cpu.get_pc_address();
                 let byte = self.read_mem(addr);
                 self.cpu.current_op.push(byte);
@@ -65,12 +65,12 @@ impl SoC {
             return 0x90
         }
 
-        let addr = addr as u8;
-        if addr > 0xB8 {
+        let port = addr as u8;
+        if addr > 0xFF && port > 0xB8 {
             return 0x90
         }
 
-        self.io[addr as usize]
+        self.io[port as usize]
     }
 
     fn color_mode(&self) -> bool {
@@ -90,18 +90,21 @@ impl SoC {
             self.io[i] = io[i];
         }
     }
+
+    #[cfg(test)]
+    pub fn get_cpu(&mut self) -> &mut V30MZ {
+        &mut self.cpu
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use super::SoC;
 
     #[test]
-    fn test_cpu_in_0xe5() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![0xE5, 0x00]);
-        soc.set_io(vec![0xCD, 0xAB]);
-        soc.tick();
-        assert_eq!(soc.cpu.get_aw(), 0xABCD);
+    fn test_io_open_bus() {
+        let soc = SoC::new();
+        assert_eq!(soc.read_io(0x100), 0x90);
+        assert_eq!(soc.read_io(0x1B9), 0x90);
     }
 }

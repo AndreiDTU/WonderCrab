@@ -23,3 +23,10 @@ enum Mode {
     M16,
     M32,
 }
+
+enum MemOperand<'a> {
+    Register(&'a mut u16),
+    HighReg(&'a mut u16),
+    LowReg(&'a mut u16),
+    Offset(u16),
+}
