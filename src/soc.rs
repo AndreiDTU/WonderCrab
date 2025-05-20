@@ -1,4 +1,4 @@
-use crate::cpu::{v30mz::V30MZ, Mode};
+use crate::cpu::v30mz::V30MZ;
 
 pub struct SoC {
     // COMPONENTS
@@ -26,40 +26,38 @@ impl SoC {
         self.cpu.tick();
 
         loop {
+            // Supply program bytes
             if self.cpu.op_request {
                 let addr = self.cpu.get_pc_address();
                 let byte = self.read_mem(addr);
                 self.cpu.current_op.push(byte);
-                self.cpu.execute();
+                let _ = self.cpu.execute();
                 continue;
             }
 
+            // I/O Requests
             if self.cpu.io_request {
                 let addr = self.cpu.get_io_address();
                 let byte = self.read_io(addr);
                 self.cpu.io_response.push(byte);
-                self.cpu.execute();
+                let _ = self.cpu.execute();
                 continue;
             }
 
-            if let Some(mode) = self.cpu.mem_read_request {
-                let addr = self.cpu.mem_address;
-                let num_bytes = match mode {
-                    Mode::M8 => 1,
-                    Mode::M16 => 2,
-                    Mode::M32 => 4,
-                };
-
-                for i in 0..num_bytes {
-                    let byte = self.read_mem(addr + i);
-                    self.cpu.mem_response.push(byte);
+            if !self.cpu.read_requests.is_empty() {
+                for addr in self.cpu.read_requests.clone() {
+                    let byte = self.read_mem(addr);
+                    self.cpu.read_responses.insert(addr, byte);
                 }
-
-                self.cpu.execute();
-                continue;
             }
 
             break;
+        }
+
+        if !self.cpu.write_requests.is_empty() {
+            for (addr, byte) in self.cpu.write_requests.clone() {
+                self.write_mem(addr, byte);
+            }
         }
     } 
 
@@ -72,6 +70,16 @@ impl SoC {
                 } else {
                     self.wram[addr as usize]
                 }
+            }
+            _ => todo!()
+        }
+    }
+
+    pub fn write_mem(&mut self, addr: u32, data: u8) {
+        match addr {
+            0x00000..=0x03FFF => self.wram[addr as usize] = data,
+            0x04000..=0x0FFFF => if self.color_mode() {
+                self.wram[addr as usize] = data;
             }
             _ => todo!()
         }

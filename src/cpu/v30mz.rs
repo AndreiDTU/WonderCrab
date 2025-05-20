@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use bitflags::bitflags;
 
-use super::{opcode::CPU_OP_CODES, MemOperand, Mode, Operand, RegisterType};
+use super::{opcode::CPU_OP_CODES, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
@@ -64,10 +66,9 @@ pub struct V30MZ {
 
     // OPERAND
     segment_override: Option<u16>,
-    pub mem_read_request: Option<Mode>,
-    pub mem_write_request: Option<Mode>,
-    pub mem_response: Vec<u8>,
-    pub mem_address: u32,
+    pub read_requests: Vec<u32>,
+    pub read_responses: HashMap<u32, u8>,
+    pub write_requests: HashMap<u32, u8>,
 
     // I/O BUS
     pub io_response: Vec<u8>,
@@ -87,27 +88,27 @@ impl V30MZ {
             PSW: CpuStatus::from_bits_truncate(0),
 
             current_op: Vec::with_capacity(5), op_request: false,
-            segment_override: None, mem_read_request: None, mem_write_request: None, mem_response: Vec::with_capacity(4), mem_address: 0,
+            segment_override: None, read_requests: Vec::new(), read_responses: HashMap::new(), write_requests: HashMap::new(),
 
             io_response: Vec::with_capacity(2), io_address: 0, io_request: false,
         }
     }
 
     pub fn tick(&mut self) {
-        self.execute();
+        self.write_requests.clear();
+        let _ = self.execute();
     }
 
-    pub fn execute(&mut self) {
+    pub fn execute(&mut self) -> Result<(), ()> {
         // CPU requires at least one byte of instruction code to execute
         self.op_request = self.current_op.len() == 0;
-        if self.op_request {return;}
+        if self.op_request {return Err(())}
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
 
-        // This will return OK only if there are no pending bus requests
-        let result = match op.code {
-            0x88..=0x8C | 0x8E =>
-                self.mov_2term(op.mode, op.op1, op.op2),
+        // This will return OK only if there are no pending requests to SoC
+        match op.code {
+            0x88..=0x8C | 0x8E => self.mov(op.mode, op.op1, op.op2, op.op3),
             0x8D => self.ldea(op.mode),
             0x98 => self.cvtbw(),
             0x99 => self.cvtwl(),
@@ -115,13 +116,14 @@ impl V30MZ {
                 self.in_op(op.mode, op.op2),
                 
             _ => todo!(),
-        };
+        }?;
 
-        if result.is_ok() {self.finish_op();}
+        self.finish_op();
+        Ok(())
     }
 
     pub fn get_pc_address(&mut self) -> u32 {
-        let addr = self.resolve_mem_address(self.PC, self.PS);
+        let addr = self.apply_segment(self.PC, self.PS);
         self.PC += 1;
         addr
     }
@@ -134,120 +136,23 @@ impl V30MZ {
 
     // Instructions
 
-    fn mov_2term(&mut self, mode: Mode, op1: Operand, op2: Operand) -> Result<(), ()> {
-        self.op_request = self.current_op.len() < 2;
-        if self.op_request {return Err(());}
-
-        let byte = self.current_op[1];
-        let r_term = (byte & 0b0011_1000) >> 3;
-        let s_term = r_term & 0b11;
-
-        match (op1, op2) {
-            (Operand::REGISTER, Operand::MEMORY) => {
-                let (src_offset, default_segment) = match self.resolve_mem_operand(byte, mode) {
-                    Err(_) => return Err(()),
-                    Ok(op) => op,
-                };
-
-                match src_offset {
-                    MemOperand::Offset(src_offset) => {
-                        let src_segment = match self.segment_override {
-                            None => default_segment,
-                            Some(seg) => seg,
-                        };
-
-                        match mode {
-                            Mode::M8 => {
-                                if self.mem_response.len() == 0 {
-                                    self.mem_read_request = Some(mode);
-                                    self.mem_address = self.resolve_mem_address(src_offset, src_segment);
-                                    return Err(());
-                                }
-
-                                let src = self.mem_response[0];
-                                
-                                match self.resolve_register_operand(r_term, mode) {
-                                    RegisterType::RW(_) => unreachable!(),
-                                    RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | ((src as u16) << 8),
-                                    RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | src as u16,
-                                };
-                            }
-                            Mode::M16 => {
-                                if self.mem_response.len() < 2 {
-                                    self.mem_read_request = Some(mode);
-                                    self.mem_address = self.resolve_mem_address(src_offset, src_segment);
-                                    return Err(());
-                                }
-
-                                let src = u16::from_le_bytes([self.mem_response[0], self.mem_response[1]]);
-
-                                match self.resolve_register_operand(r_term, mode) {
-                                    RegisterType::RW(r) => *r = src,
-                                    _ => unreachable!(),
-                                }
-                            },
-                            Mode::M32 => unreachable!(),
-                        }
+    fn mov(&mut self, mode: Mode, op1: Operand, op2: Operand, op3: Option<Operand>) -> Result<(), ()> {
+        match op3 {
+            None => {
+                match mode {
+                    Mode::M8 => {
+                        let src = self.resolve_src_8(op2)?;
+                        self.write_src_to_dest_8(op1, src)?;
                     }
-                    MemOperand::Register(register_type) => match register_type {
-                        RegisterType::RW(r) => {
-                            let src = *r;
-                            match self.resolve_register_operand(r_term, mode) {
-                                RegisterType::RW(dest) => *dest = src,
-                                _ => unreachable!(),
-                            }
-                        }
-                        RegisterType::RH(rh) => {
-                            let src = *rh;
-                            match self.resolve_register_operand(r_term, mode) {
-                                RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | (src & 0xFF00),
-                                RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | (src & 0x00FF),
-                                _ => unreachable!(),
-                            }
-                        }
-                        RegisterType::RL(rl) => {
-                            let src = *rl;
-                            match self.resolve_register_operand(r_term, mode) {
-                                RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | (src & 0xFF00),
-                                RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | (src & 0x00FF),
-                                _ => unreachable!(),
-                            }
-                        }
-                    }
+                    Mode::M16 => {
+                        let src = self.resolve_src_16(op2)?;
+                        self.write_src_to_dest_16(op1, src)?;
+                    },
+                    Mode::M32 => panic!("32-bit move only valid when op3 exists"),
                 }
             }
-            (Operand::MEMORY, Operand::SEGMENT) => {
-                let src = *self.resolve_segment(s_term);
-
-                let (dest_offset, default_segment) = match self.resolve_mem_operand(byte, mode) {
-                    Err(_) => return Err(()),
-                    Ok(op) => op,
-                };
-
-                match dest_offset {
-                    MemOperand::Offset(dest_offset) => {
-                        let dest_segment = match self.segment_override {
-                            None => default_segment,
-                            Some(seg) => seg,
-                        };
-                        
-                        self.mem_address = self.resolve_mem_address(dest_offset, dest_segment);
-                        self.mem_write_request = Some(mode);
-                        return Ok(());
-                    }
-                    MemOperand::Register(register_type) => {
-                        match register_type {
-                            RegisterType::RW(r) => *r = src,
-                            RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | (src & 0xFF00),
-                            RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | (src & 0x00FF),
-                        };
-                        return Ok(());
-                    }
-                }
-            }
-
-            _ => todo!()
-        };
+            Some(_) => todo!()
+        }
 
         Ok(())
     }
@@ -357,10 +262,228 @@ impl V30MZ {
 
     // Utility functions
 
+    fn write_src_to_dest_16(&mut self, op: Operand, src: u16) -> Result<(), ()> {
+        match op {
+            Operand::MEMORY => self.write_to_mem_operand_16(src)?,
+            Operand::REGISTER => self.write_reg_operand_16(src)?,
+            Operand::ACCUMULATOR => self.AW = src,
+            Operand::SEGMENT => self.write_to_seg_operand_16(src)?,
+            Operand::DIRECT => todo!(),
+            _ => panic!("Unsupported 16-bit destination")
+        }
+
+        Ok(())
+    }
+
+    fn write_to_seg_operand_16(&mut self, src: u16) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let s_bits = self.current_op[1] >> 3;
+
+        *self.resolve_segment(s_bits) = src;
+
+        Ok(())
+    }
+
+    fn resolve_src_16(&mut self, op: Operand) -> Result<u16, ()> {
+        let src = match op {
+            Operand::MEMORY => {
+                self.expect_op_bytes(2)?;
+                let byte = self.current_op[1];
+
+                self.resolve_mem_src_16(byte)?
+            },
+            Operand::REGISTER => {
+                self.expect_op_bytes(2)?;
+
+                let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
+                self.resolve_register_operand(r_bits, Mode::M16).try_into()?
+            }
+            Operand::ACCUMULATOR => self.AW,
+            Operand::IMMEDIATE => {
+                self.expect_op_bytes(3)?;
+                u16::from_le_bytes([self.current_op[1], self.current_op[2]])
+            },
+            Operand::SEGMENT => {
+                self.expect_op_bytes(2)?;
+                *self.resolve_segment(self.current_op[1])
+            },
+            Operand::DIRECT => todo!(),
+            Operand::NONE => panic!("None src not supported"),
+        };
+
+        Ok(src)
+    }
+
+    fn write_src_to_dest_8(&mut self, op: Operand, src: u8) -> Result<(), ()> {
+        match op {
+            Operand::MEMORY => self.write_to_mem_operand_8(src)?,
+            Operand::REGISTER => self.write_reg_operand_8(src)?,
+            Operand::ACCUMULATOR => self.set_AL(src),
+            Operand::DIRECT => todo!(),
+            _ => panic!("Unsupported 8-bit destination type"),
+        };
+
+        Ok(())
+    }
+
+    fn write_to_mem_operand_8(&mut self, src: u8) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let byte = self.current_op[1];
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8)?;
+
+        match mem_operand {
+            MemOperand::Offset(offset) => {
+                let addr = self.get_physical_address(offset, default_segment);
+                self.write_mem(addr, src);
+            }
+            MemOperand::Register(register_type) => match register_type {
+                RegisterType::RW(_) => unreachable!(),
+                RegisterType::RH(rh) => *rh = swap_h(*rh, src),
+                RegisterType::RL(rl) => *rl = swap_l(*rl, src),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_to_mem_operand_16(&mut self, src: u16) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let byte = self.current_op[1];
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16)?;
+
+        match mem_operand {
+            MemOperand::Offset(offset) => {
+                let addr = self.get_physical_address(offset, default_segment);
+                self.write_mem_16(addr, src);
+            }
+            MemOperand::Register(register_type) => match register_type {
+                RegisterType::RW(r) => *r = src,
+                _ => unreachable!()
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_reg_operand_8(&mut self, src: u8) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
+
+        match self.resolve_register_operand(r_bits, Mode::M8) {
+            RegisterType::RW(_) => unreachable!(),
+            RegisterType::RH(rh) => *rh = swap_h(*rh, src),
+            RegisterType::RL(rl) => *rl = swap_l(*rl, src),
+        }
+
+        Ok(())
+    }
+
+    fn write_reg_operand_16(&mut self, src: u16) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
+
+        match self.resolve_register_operand(r_bits, Mode::M16) {
+            RegisterType::RW(r) => *r = src,
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    fn resolve_src_8(&mut self, op: Operand) -> Result<u8, ()> {
+        match op {
+            Operand::MEMORY => {
+                self.expect_op_bytes(2)?;
+
+                self.resolve_mem_src_8(self.current_op[1])
+            }
+            Operand::REGISTER => {
+                self.expect_op_bytes(2)?;
+
+                let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
+                self.resolve_register_operand(r_bits, Mode::M8).try_into()
+            }
+            Operand::ACCUMULATOR => Ok(self.AW as u8),
+            Operand::IMMEDIATE => {
+                self.expect_op_bytes(2)?;
+
+                Ok(self.current_op[1])
+            }
+            Operand::DIRECT => todo!(),
+            _ => panic!("Unsuported 8-bit source type"),
+        }
+    }
+
+    // Returns Err if the current_op is shorter than the amount of bytes
+    fn expect_op_bytes(&mut self, bytes: usize) -> Result<(), ()> {
+        self.op_request = self.current_op.len() < bytes;
+        if self.op_request {return Err(())} else {Ok(())}
+    }
+
+    fn resolve_mem_src_8(&mut self, byte: u8) -> Result<u8, ()> {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8)?;
+
+        match mem_operand {
+            MemOperand::Offset(offset) => {
+                let addr = self.get_physical_address(offset, default_segment);
+                self.read_mem(addr)
+            }
+            MemOperand::Register(register_type) => register_type.try_into()
+        }
+    }
+
+    fn resolve_mem_src_16(&mut self, byte: u8) -> Result<u16, ()> {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16)?;
+
+        match mem_operand {
+            MemOperand::Offset(offset) => {
+                let addr = self.get_physical_address(offset, default_segment);
+                self.read_mem_16(addr)
+            }
+            MemOperand::Register(register_type) => register_type.try_into()
+        }
+    }
+
+    fn get_physical_address(&self, offset: u16, default_segment: u16) -> u32 {
+        let segment = match self.segment_override {
+            None => default_segment,
+            Some(s) => s,
+        };
+
+        self.apply_segment(offset, segment)
+    }
+
+    fn read_mem(&mut self, addr: u32) -> Result<u8, ()> {
+        return match self.read_responses.get(&addr) {
+            None => {
+                self.read_requests.push(addr);
+                Err(())
+            }
+            Some(byte) => Ok(*byte)
+        }
+    }
+
+    fn read_mem_16(&mut self, addr: u32) -> Result<u16, ()> {
+        let lo = self.read_mem(addr)?;
+        let hi = self.read_mem(addr.wrapping_add(1))?;
+        Ok(u16::from_le_bytes([lo, hi]))
+    }
+
+    fn write_mem(&mut self, addr: u32, data: u8) {
+        self.write_requests.insert(addr, data);
+    }
+
+    fn write_mem_16(&mut self, addr: u32, data: u16) {
+        let bytes = data.to_le_bytes();
+        self.write_requests.insert(addr, bytes[0]);
+        self.write_requests.insert(addr, bytes[1]);
+    }
+
     fn finish_op(&mut self) {
         self.current_op.clear();
         self.io_response.clear();
-        self.mem_response.clear();
+        self.read_requests.clear();
+        self.read_responses.clear();
     }
 
     fn set_AL(&mut self, AL: u8) {
@@ -377,11 +500,11 @@ impl V30MZ {
             1 => &mut self.PS,
             2 => &mut self.SS,
             3 => &mut self.DS0,
-            _ => unreachable!(),
+            e => panic!("Invalid segment index: {}", e),
         }
     }
 
-    fn resolve_mem_address(&self, offset: u16, segment: u16) -> u32 {
+    fn apply_segment(&self, offset: u16, segment: u16) -> u32 {
         let segment = (segment as u32) << 4;
         let offset = offset as u32;
         (offset + segment) & 0xFFFFF
@@ -398,7 +521,7 @@ impl V30MZ {
                 5 => RegisterType::RH(&mut self.CW),
                 6 => RegisterType::RH(&mut self.DW),
                 7 => RegisterType::RH(&mut self.BW),
-                _ => unreachable!(),
+                e => panic!("Invalid register index: {}", e),
             }
             Mode::M16 => match bits {
                 0 => RegisterType::RW(&mut self.AW),
@@ -409,9 +532,9 @@ impl V30MZ {
                 5 => RegisterType::RW(&mut self.BP),
                 6 => RegisterType::RW(&mut self.IX),
                 7 => RegisterType::RW(&mut self.IY),
-                _ => unreachable!(),
+                e => panic!("Invalid register index: {}", e),
             }
-            _ => unreachable!()
+            _ => panic!("Invalid register addressing mode"),
         }
     }
 
@@ -473,7 +596,7 @@ impl V30MZ {
 
 #[cfg(test)]
 mod test {
-    use crate::{cpu, soc::SoC};
+    use crate::soc::SoC;
 
     use super::V30MZ;
 
@@ -483,12 +606,12 @@ mod test {
         
         cpu.AW = 0x00FF;
         cpu.current_op = vec![0x98];
-        cpu.execute();
+        let _ = cpu.execute();
         assert_eq!(cpu.AW, 0xFFFF);
 
         cpu.AW = 0xFF00;
         cpu.current_op = vec![0x98];
-        cpu.execute();
+        let _ = cpu.execute();
         assert_eq!(cpu.AW, 0x0000);
     }
 
@@ -498,12 +621,12 @@ mod test {
 
         cpu.AW = 0x8000;
         cpu.current_op = vec![0x99];
-        cpu.execute();
+        let _ = cpu.execute();
         assert_eq!(cpu.DW, 0xFFFF);
 
         cpu.AW = 0x7FFF;
         cpu.current_op = vec![0x99];
-        cpu.execute();
+        let _ = cpu.execute();
         assert_eq!(cpu.DW, 0x0000);
     }
 
