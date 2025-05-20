@@ -18,7 +18,7 @@ enum Operand {
 
 // Amount of bits to be read
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Mode {
+pub enum Mode {
     M8,
     M16,
     M32,

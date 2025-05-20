@@ -1,4 +1,4 @@
-use crate::cpu::v30mz::V30MZ;
+use crate::cpu::{v30mz::V30MZ, Mode};
 
 pub struct SoC {
     // COMPONENTS
@@ -8,7 +8,7 @@ pub struct SoC {
     wram: [u8; 0xFFFF],
 
     // I/O
-    io: [u8; 0xFF],
+    io_in: [u8; 0xFF],
 }
 
 impl SoC {
@@ -18,7 +18,7 @@ impl SoC {
 
             wram: [0; 0xFFFF],
 
-            io: [0; 0xFF],
+            io_in: [0; 0xFF],
         }
     }
 
@@ -38,6 +38,23 @@ impl SoC {
                 let addr = self.cpu.get_io_address();
                 let byte = self.read_io(addr);
                 self.cpu.io_response.push(byte);
+                self.cpu.execute();
+                continue;
+            }
+
+            if let Some(mode) = self.cpu.mem_read_request {
+                let addr = self.cpu.mem_address;
+                let num_bytes = match mode {
+                    Mode::M8 => 1,
+                    Mode::M16 => 2,
+                    Mode::M32 => 4,
+                };
+
+                for i in 0..num_bytes {
+                    let byte = self.read_mem(addr + i);
+                    self.cpu.mem_response.push(byte);
+                }
+
                 self.cpu.execute();
                 continue;
             }
@@ -70,7 +87,7 @@ impl SoC {
             return 0x90
         }
 
-        self.io[port as usize]
+        self.io_in[port as usize]
     }
 
     fn color_mode(&self) -> bool {
@@ -87,7 +104,7 @@ impl SoC {
     #[cfg(test)]
     pub fn set_io(&mut self, io: Vec<u8>) {
         for i in 0..io.len() {
-            self.io[i] = io[i];
+            self.io_in[i] = io[i];
         }
     }
 

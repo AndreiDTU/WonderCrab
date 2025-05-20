@@ -57,9 +57,17 @@ pub struct V30MZ {
     // COMMUNICATION
 
     // MEMORY BUS
+
+    // PROGRAM
     pub current_op: Vec<u8>,
     pub op_request: bool,
+
+    // OPERAND
     segment_override: Option<u16>,
+    pub mem_read_request: Option<Mode>,
+    pub mem_write_request: Option<Mode>,
+    pub mem_response: Vec<u8>,
+    pub mem_address: u32,
 
     // I/O BUS
     pub io_response: Vec<u8>,
@@ -71,38 +79,22 @@ impl V30MZ {
     pub fn new() -> Self {
         Self {
             AW: 0, BW: 0, CW: 0, DW: 0,
-
             DS0: 0, DS1: 0, PS: 0, SS: 0,
-
             IX: 0, IY: 0,
-            
-            SP: 0, BP: 0,
-            
+            SP: 0, BP: 0, 
             PC: 0,
             
             PSW: CpuStatus::from_bits_truncate(0),
 
-            current_op: Vec::new(), op_request: false, segment_override: None,
+            current_op: Vec::with_capacity(5), op_request: false,
+            segment_override: None, mem_read_request: None, mem_write_request: None, mem_response: Vec::with_capacity(4), mem_address: 0,
 
-            io_response: Vec::new(), io_address: 0, io_request: false,
+            io_response: Vec::with_capacity(2), io_address: 0, io_request: false,
         }
     }
 
     pub fn tick(&mut self) {
         self.execute();
-    }
-
-    pub fn get_pc_address(&mut self) -> u32 {
-        let segment = (self.PS as u32) << 4;
-        let counter = self.PC as u32;
-        self.PC += 1;
-        (counter + segment) & 0xFFFFF
-    }
-
-    pub fn get_io_address(&mut self) -> u16 {
-        let addr = self.io_address;
-        self.io_address += 1;
-        addr
     }
 
     pub fn execute(&mut self) {
@@ -114,6 +106,8 @@ impl V30MZ {
 
         // This will return OK only if there are no pending bus requests
         let result = match op.code {
+            0x88..=0x8C | 0x8E =>
+                self.mov_2term(op.mode, op.op1, op.op2),
             0x8D => self.ldea(op.mode),
             0x98 => self.cvtbw(),
             0x99 => self.cvtwl(),
@@ -126,104 +120,137 @@ impl V30MZ {
         if result.is_ok() {self.finish_op();}
     }
 
-    // Utility functions
-
-    fn finish_op(&mut self) {
-        self.current_op = Vec::new();
-        self.io_response = Vec::new();
+    pub fn get_pc_address(&mut self) -> u32 {
+        let addr = self.resolve_mem_address(self.PC, self.PS);
+        self.PC += 1;
+        addr
     }
 
-    fn set_AL(&mut self, AL: u8) {
-        self.AW = (self.AW & 0xFF00) | AL as u16
-    }
-
-    fn set_AH(&mut self, AH: u8) {
-        self.AW = (self.AW & 0x00FF) | ((AH as u16) << 8)
-    }
-
-    fn resolve_register_operand(&mut self, bits: u8, mode: Mode) -> RegisterType<'_> {
-        match mode {
-            Mode::M8 => match bits {
-                0 => RegisterType::RL(&mut self.AW),
-                1 => RegisterType::RL(&mut self.CW),
-                2 => RegisterType::RL(&mut self.DW),
-                3 => RegisterType::RL(&mut self.BW),
-                4 => RegisterType::RH(&mut self.AW),
-                5 => RegisterType::RH(&mut self.CW),
-                6 => RegisterType::RH(&mut self.DW),
-                7 => RegisterType::RH(&mut self.BW),
-                _ => unreachable!(),
-            }
-            Mode::M16 => match bits {
-                0 => RegisterType::RW(&mut self.AW),
-                1 => RegisterType::RW(&mut self.CW),
-                2 => RegisterType::RW(&mut self.DW),
-                3 => RegisterType::RW(&mut self.BW),
-                4 => RegisterType::RW(&mut self.SP),
-                5 => RegisterType::RW(&mut self.BP),
-                6 => RegisterType::RW(&mut self.IX),
-                7 => RegisterType::RW(&mut self.IY),
-                _ => unreachable!(),
-            }
-            _ => unreachable!()
-        }
-    }
-
-    fn resolve_mem_operand(&mut self, byte: u8, mode: Mode) -> Result<(MemOperand, u16), ()> {
-        let segment = self.DS0;
-        let a = byte >> 6;
-        let m = byte & 0b111;
-
-        // When a is 3, m specifies the index of the register containing the operand's value.
-        if a == 3 {return Ok((MemOperand::Register(self.resolve_register_operand(m, mode)), segment))};
-
-        // When a is 0 and m is 6, the operand's memory offset is not given by an expression.
-        // Instead, the literal 16-bit offset is present as two additional bytes of program code (low byte first).
-        if a == 0 && m == 6 {
-            self.op_request = self.current_op.len() < 4;
-            if self.op_request {return Err(())};
-
-            let offset = u16::from_le_bytes([self.current_op[2], self.current_op[3]]);
-            return Ok((MemOperand::Offset(offset), segment));
-        }
-
-        // When a is not 3, m specifies the base of the expression to use to calculate a memory offset.
-        // If BP is present, the default segment register is SS. If BP is not present, the defaut segment register is DS0.
-        let (base, result_segment) = match m {
-            0 => (self.BW.wrapping_add(self.IX), segment),
-            1 => (self.BW.wrapping_add(self.IY), segment),
-            2 => (self.BW.wrapping_add(self.IX), self.SS),
-            3 => (self.BW.wrapping_add(self.IY), self.SS),
-            4 => (self.IX, segment),
-            5 => (self.IY, segment),
-            6 => (self.BP, self.SS),
-            7 => (self.BW, segment),
-            _ => unreachable!()
-        };
-
-        // The offset portion of the operand's physical address is calculated by evaluating the expression base
-        // and optionally adding a signed displacement offset to it.
-        let displacement = match a {
-            0 => 0,
-            1 => {
-                self.op_request = self.current_op.len() < 3;
-                if self.op_request {return Err(())}
-
-                ((self.current_op[2] as i8) as i16) as u16
-            }
-            2 => {
-                self.op_request = self.current_op.len() < 4;
-                if self.op_request {return Err(())};
-
-                u16::from_le_bytes([self.current_op[2], self.current_op[3]])
-            }
-            _ => unreachable!(),
-        };
-
-        Ok((MemOperand::Offset(base.wrapping_add(displacement)), result_segment))
+    pub fn get_io_address(&mut self) -> u16 {
+        let addr = self.io_address;
+        self.io_address += 1;
+        addr
     }
 
     // Instructions
+
+    fn mov_2term(&mut self, mode: Mode, op1: Operand, op2: Operand) -> Result<(), ()> {
+        self.op_request = self.current_op.len() < 2;
+        if self.op_request {return Err(());}
+
+        let byte = self.current_op[1];
+        let r_term = (byte & 0b0011_1000) >> 3;
+        let s_term = r_term & 0b11;
+
+        match (op1, op2) {
+            (Operand::REGISTER, Operand::MEMORY) => {
+                let (src_offset, default_segment) = match self.resolve_mem_operand(byte, mode) {
+                    Err(_) => return Err(()),
+                    Ok(op) => op,
+                };
+
+                match src_offset {
+                    MemOperand::Offset(src_offset) => {
+                        let src_segment = match self.segment_override {
+                            None => default_segment,
+                            Some(seg) => seg,
+                        };
+
+                        match mode {
+                            Mode::M8 => {
+                                if self.mem_response.len() == 0 {
+                                    self.mem_read_request = Some(mode);
+                                    self.mem_address = self.resolve_mem_address(src_offset, src_segment);
+                                    return Err(());
+                                }
+
+                                let src = self.mem_response[0];
+                                
+                                match self.resolve_register_operand(r_term, mode) {
+                                    RegisterType::RW(_) => unreachable!(),
+                                    RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | ((src as u16) << 8),
+                                    RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | src as u16,
+                                };
+                            }
+                            Mode::M16 => {
+                                if self.mem_response.len() < 2 {
+                                    self.mem_read_request = Some(mode);
+                                    self.mem_address = self.resolve_mem_address(src_offset, src_segment);
+                                    return Err(());
+                                }
+
+                                let src = u16::from_le_bytes([self.mem_response[0], self.mem_response[1]]);
+
+                                match self.resolve_register_operand(r_term, mode) {
+                                    RegisterType::RW(r) => *r = src,
+                                    _ => unreachable!(),
+                                }
+                            },
+                            Mode::M32 => unreachable!(),
+                        }
+                    }
+                    MemOperand::Register(register_type) => match register_type {
+                        RegisterType::RW(r) => {
+                            let src = *r;
+                            match self.resolve_register_operand(r_term, mode) {
+                                RegisterType::RW(dest) => *dest = src,
+                                _ => unreachable!(),
+                            }
+                        }
+                        RegisterType::RH(rh) => {
+                            let src = *rh;
+                            match self.resolve_register_operand(r_term, mode) {
+                                RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | (src & 0xFF00),
+                                RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | (src & 0x00FF),
+                                _ => unreachable!(),
+                            }
+                        }
+                        RegisterType::RL(rl) => {
+                            let src = *rl;
+                            match self.resolve_register_operand(r_term, mode) {
+                                RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | (src & 0xFF00),
+                                RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | (src & 0x00FF),
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
+                }
+            }
+            (Operand::MEMORY, Operand::SEGMENT) => {
+                let src = *self.resolve_segment(s_term);
+
+                let (dest_offset, default_segment) = match self.resolve_mem_operand(byte, mode) {
+                    Err(_) => return Err(()),
+                    Ok(op) => op,
+                };
+
+                match dest_offset {
+                    MemOperand::Offset(dest_offset) => {
+                        let dest_segment = match self.segment_override {
+                            None => default_segment,
+                            Some(seg) => seg,
+                        };
+                        
+                        self.mem_address = self.resolve_mem_address(dest_offset, dest_segment);
+                        self.mem_write_request = Some(mode);
+                        return Ok(());
+                    }
+                    MemOperand::Register(register_type) => {
+                        match register_type {
+                            RegisterType::RW(r) => *r = src,
+                            RegisterType::RH(rh) => *rh = (*rh & 0x00FF) | (src & 0xFF00),
+                            RegisterType::RL(rl) => *rl = (*rl & 0xFF00) | (src & 0x00FF),
+                        };
+                        return Ok(());
+                    }
+                }
+            }
+
+            _ => todo!()
+        };
+
+        Ok(())
+    }
 
     fn ldea(&mut self, mode: Mode) -> Result<(), ()> {
         // Calculates the offset of a memory operand and stores
@@ -326,6 +353,121 @@ impl V30MZ {
         }
 
         Ok(())
+    }
+
+    // Utility functions
+
+    fn finish_op(&mut self) {
+        self.current_op.clear();
+        self.io_response.clear();
+        self.mem_response.clear();
+    }
+
+    fn set_AL(&mut self, AL: u8) {
+        self.AW = (self.AW & 0xFF00) | AL as u16
+    }
+
+    fn set_AH(&mut self, AH: u8) {
+        self.AW = (self.AW & 0x00FF) | ((AH as u16) << 8)
+    }
+
+    fn resolve_segment(&mut self, bits: u8) -> &mut u16 {
+        match bits {
+            0 => &mut self.DS1,
+            1 => &mut self.PS,
+            2 => &mut self.SS,
+            3 => &mut self.DS0,
+            _ => unreachable!(),
+        }
+    }
+
+    fn resolve_mem_address(&self, offset: u16, segment: u16) -> u32 {
+        let segment = (segment as u32) << 4;
+        let offset = offset as u32;
+        (offset + segment) & 0xFFFFF
+    }
+
+    fn resolve_register_operand(&mut self, bits: u8, mode: Mode) -> RegisterType<'_> {
+        match mode {
+            Mode::M8 => match bits {
+                0 => RegisterType::RL(&mut self.AW),
+                1 => RegisterType::RL(&mut self.CW),
+                2 => RegisterType::RL(&mut self.DW),
+                3 => RegisterType::RL(&mut self.BW),
+                4 => RegisterType::RH(&mut self.AW),
+                5 => RegisterType::RH(&mut self.CW),
+                6 => RegisterType::RH(&mut self.DW),
+                7 => RegisterType::RH(&mut self.BW),
+                _ => unreachable!(),
+            }
+            Mode::M16 => match bits {
+                0 => RegisterType::RW(&mut self.AW),
+                1 => RegisterType::RW(&mut self.CW),
+                2 => RegisterType::RW(&mut self.DW),
+                3 => RegisterType::RW(&mut self.BW),
+                4 => RegisterType::RW(&mut self.SP),
+                5 => RegisterType::RW(&mut self.BP),
+                6 => RegisterType::RW(&mut self.IX),
+                7 => RegisterType::RW(&mut self.IY),
+                _ => unreachable!(),
+            }
+            _ => unreachable!()
+        }
+    }
+
+    // Returns the operand and its default segment's value
+    fn resolve_mem_operand(&mut self, byte: u8, mode: Mode) -> Result<(MemOperand, u16), ()> {
+        let segment = self.DS0;
+        let a = byte >> 6;
+        let m = byte & 0b111;
+
+        // When a is 3, m specifies the index of the register containing the operand's value.
+        if a == 3 {return Ok((MemOperand::Register(self.resolve_register_operand(m, mode)), segment))};
+
+        // When a is 0 and m is 6, the operand's memory offset is not given by an expression.
+        // Instead, the literal 16-bit offset is present as two additional bytes of program code (low byte first).
+        if a == 0 && m == 6 {
+            self.op_request = self.current_op.len() < 4;
+            if self.op_request {return Err(())};
+
+            let offset = u16::from_le_bytes([self.current_op[2], self.current_op[3]]);
+            return Ok((MemOperand::Offset(offset), segment));
+        }
+
+        // When a is not 3, m specifies the base of the expression to use to calculate a memory offset.
+        // If BP is present, the default segment register is SS. If BP is not present, the defaut segment register is DS0.
+        let (base, result_segment) = match m {
+            0 => (self.BW.wrapping_add(self.IX), segment),
+            1 => (self.BW.wrapping_add(self.IY), segment),
+            2 => (self.BW.wrapping_add(self.IX), self.SS),
+            3 => (self.BW.wrapping_add(self.IY), self.SS),
+            4 => (self.IX, segment),
+            5 => (self.IY, segment),
+            6 => (self.BP, self.SS),
+            7 => (self.BW, segment),
+            _ => unreachable!()
+        };
+
+        // The offset portion of the operand's physical address is calculated by evaluating the expression base
+        // and optionally adding a signed displacement offset to it.
+        let displacement = match a {
+            0 => 0,
+            1 => {
+                self.op_request = self.current_op.len() < 3;
+                if self.op_request {return Err(())}
+
+                ((self.current_op[2] as i8) as i16) as u16
+            }
+            2 => {
+                self.op_request = self.current_op.len() < 4;
+                if self.op_request {return Err(())};
+
+                u16::from_le_bytes([self.current_op[2], self.current_op[3]])
+            }
+            _ => unreachable!(),
+        };
+
+        Ok((MemOperand::Offset(base.wrapping_add(displacement)), result_segment))
     }
 }
 
