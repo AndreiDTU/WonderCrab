@@ -25,8 +25,12 @@ enum Mode {
 }
 
 enum MemOperand<'a> {
-    Register(&'a mut u16),
-    HighReg(&'a mut u16),
-    LowReg(&'a mut u16),
     Offset(u16),
+    Register(RegisterType<'a>),
+}
+
+enum RegisterType<'a> {
+    RW(&'a mut u16),
+    RH(&'a mut u16),
+    RL(&'a mut u16),
 }

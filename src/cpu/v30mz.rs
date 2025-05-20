@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use super::{opcode::CPU_OP_CODES, MemOperand, Mode, Operand};
+use super::{opcode::CPU_OP_CODES, MemOperand, Mode, Operand, RegisterType};
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
@@ -141,47 +141,54 @@ impl V30MZ {
         self.AW = (self.AW & 0x00FF) | ((AH as u16) << 8)
     }
 
-    fn resolve_mem_operand_offset(&mut self, byte: u8, mode: Mode) -> Result<(MemOperand, u16), ()> {
+    fn resolve_register_operand(&mut self, bits: u8, mode: Mode) -> RegisterType<'_> {
+        match mode {
+            Mode::M8 => match bits {
+                0 => RegisterType::RL(&mut self.AW),
+                1 => RegisterType::RL(&mut self.CW),
+                2 => RegisterType::RL(&mut self.DW),
+                3 => RegisterType::RL(&mut self.BW),
+                4 => RegisterType::RH(&mut self.AW),
+                5 => RegisterType::RH(&mut self.CW),
+                6 => RegisterType::RH(&mut self.DW),
+                7 => RegisterType::RH(&mut self.BW),
+                _ => unreachable!(),
+            }
+            Mode::M16 => match bits {
+                0 => RegisterType::RW(&mut self.AW),
+                1 => RegisterType::RW(&mut self.CW),
+                2 => RegisterType::RW(&mut self.DW),
+                3 => RegisterType::RW(&mut self.BW),
+                4 => RegisterType::RW(&mut self.SP),
+                5 => RegisterType::RW(&mut self.BP),
+                6 => RegisterType::RW(&mut self.IX),
+                7 => RegisterType::RW(&mut self.IY),
+                _ => unreachable!(),
+            }
+            _ => unreachable!()
+        }
+    }
+
+    fn resolve_mem_operand(&mut self, byte: u8, mode: Mode) -> Result<(MemOperand, u16), ()> {
         let segment = self.DS0;
         let a = byte >> 6;
         let m = byte & 0b111;
 
-        if a == 3 {
-            return Ok((if mode == Mode::M8 {
-                match m {
-                    0 => MemOperand::LowReg(&mut self.AW),
-                    1 => MemOperand::LowReg(&mut self.CW),
-                    2 => MemOperand::LowReg(&mut self.DW),
-                    3 => MemOperand::LowReg(&mut self.BW),
-                    4 => MemOperand::HighReg(&mut self.AW),
-                    5 => MemOperand::HighReg(&mut self.CW),
-                    6 => MemOperand::HighReg(&mut self.DW),
-                    7 => MemOperand::HighReg(&mut self.BW),
-                    _ => unreachable!()
-                }
-            } else {
-                match m {
-                    0 => MemOperand::Register(&mut self.AW),
-                    1 => MemOperand::Register(&mut self.CW),
-                    2 => MemOperand::Register(&mut self.DW),
-                    3 => MemOperand::Register(&mut self.BW),
-                    4 => MemOperand::Register(&mut self.SP),
-                    5 => MemOperand::Register(&mut self.BP),
-                    6 => MemOperand::Register(&mut self.IX),
-                    7 => MemOperand::Register(&mut self.IY),
-                    _ => unreachable!()
-                }
-            }, segment));
-        };
+        // When a is 3, m specifies the index of the register containing the operand's value.
+        if a == 3 {return Ok((MemOperand::Register(self.resolve_register_operand(m, mode)), segment))};
 
-
+        // When a is 0 and m is 6, the operand's memory offset is not given by an expression.
+        // Instead, the literal 16-bit offset is present as two additional bytes of program code (low byte first).
         if a == 0 && m == 6 {
-            let mem_request = self.current_op.len() < 4;
-            if mem_request {return Err(())};
+            self.op_request = self.current_op.len() < 4;
+            if self.op_request {return Err(())};
 
-            return Ok((MemOperand::Offset(u16::from_le_bytes([self.current_op[2], self.current_op[3]])), segment));
+            let offset = u16::from_le_bytes([self.current_op[2], self.current_op[3]]);
+            return Ok((MemOperand::Offset(offset), segment));
         }
 
+        // When a is not 3, m specifies the base of the expression to use to calculate a memory offset.
+        // If BP is present, the default segment register is SS. If BP is not present, the defaut segment register is DS0.
         let (base, result_segment) = match m {
             0 => (self.BW.wrapping_add(self.IX), segment),
             1 => (self.BW.wrapping_add(self.IY), segment),
@@ -194,24 +201,26 @@ impl V30MZ {
             _ => unreachable!()
         };
 
-        let offset = match a {
+        // The offset portion of the operand's physical address is calculated by evaluating the expression base
+        // and optionally adding a signed displacement offset to it.
+        let displacement = match a {
             0 => 0,
             1 => {
-                let mem_request = self.current_op.len() < 3;
-                if mem_request {return Err(())}
+                self.op_request = self.current_op.len() < 3;
+                if self.op_request {return Err(())}
 
-                self.current_op[2] as u16
+                ((self.current_op[2] as i8) as i16) as u16
             }
             2 => {
-                let mem_request = self.current_op.len() < 4;
-                if mem_request {return Err(())};
+                self.op_request = self.current_op.len() < 4;
+                if self.op_request {return Err(())};
 
                 u16::from_le_bytes([self.current_op[2], self.current_op[3]])
             }
             _ => unreachable!(),
         };
 
-        Ok((MemOperand::Offset(base + offset), result_segment))
+        Ok((MemOperand::Offset(base.wrapping_add(displacement)), result_segment))
     }
 
     // Instructions
@@ -225,7 +234,7 @@ impl V30MZ {
         if self.op_request {return Err(())}
 
         let byte = self.current_op[1];
-        let address = match self.resolve_mem_operand_offset(byte, mode) {
+        let address = match self.resolve_mem_operand(byte, mode) {
             Err(_) => return Err(()),
             Ok((op, _)) => {
                 op
@@ -233,16 +242,16 @@ impl V30MZ {
         };
 
         match address {
-            MemOperand::Register(r) => self.AW = *r,
-            MemOperand::HighReg(rh) => {
+            MemOperand::Offset(offset) => self.AW = offset,
+            MemOperand::Register(RegisterType::RW(r)) => self.AW = *r,
+            MemOperand::Register(RegisterType::RH(rh)) => {
                 let AH = *rh as u8;
                 self.set_AH(AH);
             }
-            MemOperand::LowReg(rl) => {
+            MemOperand::Register(RegisterType::RL(rl)) => {
                 let AL = *rl as u8;
                 self.set_AL(AL);
             }
-            MemOperand::Offset(offset) => self.AW = offset,
         }
 
         Ok(())
@@ -322,7 +331,7 @@ impl V30MZ {
 
 #[cfg(test)]
 mod test {
-    use crate::soc::SoC;
+    use crate::{cpu, soc::SoC};
 
     use super::V30MZ;
 
@@ -392,5 +401,40 @@ mod test {
         soc.get_cpu().DW = 0x00;
         soc.tick();
         assert_eq!(soc.get_cpu().AW, 0xABCD);
+    }
+
+    #[test]
+    fn test_ldea_0x8d() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0x8D, 0x06, 0xCD, 0xAB, // Immediate offset
+            0x8D, 0xC1,             // Pointer to CW
+            0x8D, 0x40, 0x11,       // BW + IX + 0x1111
+            0x8D, 0x40, 0xFF,       // BW + IX - 1
+            0x8D, 0x80, 0x11, 0x11, // BW + IX + 0x1111
+            0x8D, 0x80, 0xFF, 0xFF, // BW + IX - 1
+        ]);
+
+        soc.get_cpu().CW = 0x1234;
+        soc.get_cpu().BW = 0x5678;
+        soc.get_cpu().IX = 0x1111;
+
+        soc.tick();
+        assert_eq!(soc.get_cpu().AW, 0xABCD);
+
+        soc.tick();
+        assert_eq!(soc.get_cpu().AW, 0x1234);
+
+        soc.tick();
+        assert_eq!(soc.get_cpu().AW, 0x679A);
+
+        soc.tick();
+        assert_eq!(soc.get_cpu().AW, 0x6788);
+
+        soc.tick();
+        assert_eq!(soc.get_cpu().AW, 0x789A);
+
+        soc.tick();
+        assert_eq!(soc.get_cpu().AW, 0x6788);
     }
 }
