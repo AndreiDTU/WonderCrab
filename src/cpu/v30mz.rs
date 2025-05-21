@@ -109,6 +109,7 @@ impl V30MZ {
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
+            // MOV
             0x9E => {
                 let AH = (self.AW >> 8) as u8;
                 let mut psw = self.PSW.bits();
@@ -120,14 +121,19 @@ impl V30MZ {
                 self.set_AH(self.PSW.bits() as u8);
                 Ok(())
             }
-            0x88..=0x8C | 0x8E | 0xA0..=0xA3 => 
-                self.mov(op),
+            0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(op),
 
+            // LDEA
             0x8D => self.ldea(op.mode),
+
+            // CVTBW
             0x98 => self.cvtbw(),
+
+            // CVTWL
             0x99 => self.cvtwl(),
-            0xE4 | 0xE5 | 0xEC | 0xED =>
-                self.in_op(op.mode, op.op2),
+
+            // IN
+            0xE4 | 0xE5 | 0xEC | 0xED => self.in_op(op.mode, op.op2),
                 
             _ => todo!(),
         }?;
@@ -195,8 +201,7 @@ impl V30MZ {
         // the result into a 16-bit register.
 
         // LDEA requires at least one byte of operand code
-        self.op_request = self.current_op.len() < 2;
-        if self.op_request {return Err(())}
+        self.expect_op_bytes(2)?;
 
         let byte = self.current_op[1];
         let address = match self.resolve_mem_operand(byte, mode) {
@@ -250,39 +255,18 @@ impl V30MZ {
         // Inputs the value from the I/O port pointed to by src and stores it into AL.
         // If 16-bit, inputs the value from the I/O port pointed to by src + 1 and stores it into AH.
 
-        // Use either the next byte padded with 0s or DW as the io_address
-        if self.io_response.is_empty() {
-            self.io_address = match src {
-                Operand::IMMEDIATE => {
-                    // Need at least one operand byte to access immediate value
-                    self.op_request = self.current_op.len() < 2;
-                    if self.op_request {return Err(())}
-
-                    self.current_op[1] as u16
-                }
-                Operand::NONE => {
-                    self.DW
-                }
-                _ => panic!("Unsupported src operand for IN"),
-            };
-        }
+        self.set_io_address(src)?;
 
         // Request either one byte to be loaded into AL
         // or two bytes to be loaded into AL and AH respectively
         match mode {
             Mode::M8 => {
-                self.io_request = self.io_response.len() == 0;
-                if self.io_request {return Err(())}
-
-                let AL = self.io_response[0];
+                let AL = self.read_io_8()?;
 
                 self.set_AL(AL);
             }
             Mode::M16 => {
-                self.io_request = self.io_response.len() < 2;
-                if self.io_request {return Err(())}
-
-                let (AL, AH) = (self.io_response[0], self.io_response[1]);
+                let (AL, AH) = self.read_io_16()?;
 
                 self.set_AL(AL);
                 self.set_AH(AH);
@@ -294,6 +278,41 @@ impl V30MZ {
     }
 
     // Utility functions
+
+    fn set_io_address(&mut self, src: Operand) -> Result<(), ()> {
+        // Use either the next byte padded with 0s or DW as the io_address
+        if self.io_response.is_empty() {
+            self.io_address = match src {
+                Operand::IMMEDIATE => {
+                    // Need at least one operand byte to access immediate value
+                    self.expect_op_bytes(2)?;
+
+                    self.current_op[1] as u16
+                }
+                Operand::NONE => {
+                    self.DW
+                }
+                _ => panic!("Unsupported src operand for I/O Port"),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn read_io_8(&mut self) -> Result<u8, ()> {
+        self.io_request = self.io_response.len() == 0;
+        if self.io_request {return Err(())}
+
+        Ok(self.io_response[0])
+    }
+
+    fn read_io_16(&mut self) -> Result<(u8, u8), ()> {
+        self.io_request = self.io_response.len() < 2;
+        if self.io_request {return Err(())}
+
+        Ok((self.io_response[0], self.io_response[1]))
+
+    }
 
     fn load_register_immediate(&mut self, mode: Mode) -> Result<(), ()> {
         match mode {
@@ -341,7 +360,7 @@ impl V30MZ {
 
     fn write_to_seg_operand_16(&mut self, src: u16) -> Result<(), ()> {
         self.expect_op_bytes(2)?;
-        let s_bits = self.current_op[1] >> 3;
+        let s_bits = (self.current_op[1] & 0b0001_1000) >> 3;
 
         *self.resolve_segment(s_bits) = src;
 
@@ -369,7 +388,8 @@ impl V30MZ {
             },
             Operand::SEGMENT => {
                 self.expect_op_bytes(2)?;
-                *self.resolve_segment(self.current_op[1])
+                let s_bits = (self.current_op[1] & 0b0001_1000) >> 3;
+                *self.resolve_segment(s_bits)
             },
             Operand::DIRECT => todo!(),
             Operand::NONE => panic!("None src not supported"),
@@ -459,7 +479,8 @@ impl V30MZ {
             Operand::MEMORY => {
                 self.expect_op_bytes(2)?;
 
-                self.resolve_mem_src_8(self.current_op[1])
+                let src = self.resolve_mem_src_8(self.current_op[1])?;
+                Ok(src)
             }
             Operand::REGISTER => {
                 self.expect_op_bytes(2)?;
@@ -530,12 +551,14 @@ impl V30MZ {
     }
 
     fn read_mem(&mut self, addr: u32) -> Result<u8, ()> {
-        return match self.read_responses.get(&addr) {
+        match self.read_responses.get(&addr) {
             None => {
                 self.read_requests.push(addr);
                 Err(())
             }
-            Some(byte) => Ok(*byte)
+            Some(byte) => {
+                Ok(*byte)
+            }
         }
     }
 
@@ -552,7 +575,7 @@ impl V30MZ {
     fn write_mem_16(&mut self, addr: u32, data: u16) {
         let bytes = data.to_le_bytes();
         self.write_requests.insert(addr, bytes[0]);
-        self.write_requests.insert(addr, bytes[1]);
+        self.write_requests.insert(addr.wrapping_add(1), bytes[1]);
     }
 
     fn finish_op(&mut self) {
@@ -671,111 +694,4 @@ impl V30MZ {
 }
 
 #[cfg(test)]
-mod test {
-    use crate::soc::SoC;
-
-    use super::V30MZ;
-
-    #[test]
-    fn test_cvtbw() {
-        let mut cpu = V30MZ::new();
-        
-        cpu.AW = 0x00FF;
-        cpu.current_op = vec![0x98];
-        let _ = cpu.execute();
-        assert_eq!(cpu.AW, 0xFFFF);
-
-        cpu.AW = 0xFF00;
-        cpu.current_op = vec![0x98];
-        let _ = cpu.execute();
-        assert_eq!(cpu.AW, 0x0000);
-    }
-
-    #[test]
-    fn test_cvtwl() {
-        let mut cpu = V30MZ::new();
-
-        cpu.AW = 0x8000;
-        cpu.current_op = vec![0x99];
-        let _ = cpu.execute();
-        assert_eq!(cpu.DW, 0xFFFF);
-
-        cpu.AW = 0x7FFF;
-        cpu.current_op = vec![0x99];
-        let _ = cpu.execute();
-        assert_eq!(cpu.DW, 0x0000);
-    }
-
-    #[test]
-    fn test_in_0xe4() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![0xE4, 0x00]);
-        soc.set_io(vec![0xCD, 0xAB]);
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0x00CD);
-    }
-
-    #[test]
-    fn test_in_0xe5() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![0xE5, 0x00]);
-        soc.set_io(vec![0xCD, 0xAB]);
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0xABCD);
-    }
-
-    #[test]
-    fn test_in_0xec() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![0xEC, 0xFF]);
-        soc.set_io(vec![0xCD, 0xAB]);
-        soc.get_cpu().DW = 0x00;
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0x00CD);
-    }
-
-    #[test]
-    fn test_in_0xed() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![0xED, 0xFF]);
-        soc.set_io(vec![0xCD, 0xAB]);
-        soc.get_cpu().DW = 0x00;
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0xABCD);
-    }
-
-    #[test]
-    fn test_ldea_0x8d() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![
-            0x8D, 0x06, 0xCD, 0xAB, // Immediate offset
-            0x8D, 0xC1,             // Pointer to CW
-            0x8D, 0x40, 0x11,       // BW + IX + 0x1111
-            0x8D, 0x40, 0xFF,       // BW + IX - 1
-            0x8D, 0x80, 0x11, 0x11, // BW + IX + 0x1111
-            0x8D, 0x80, 0xFF, 0xFF, // BW + IX - 1
-        ]);
-
-        soc.get_cpu().CW = 0x1234;
-        soc.get_cpu().BW = 0x5678;
-        soc.get_cpu().IX = 0x1111;
-
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0xABCD);
-
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0x1234);
-
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0x679A);
-
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0x6788);
-
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0x789A);
-
-        soc.tick();
-        assert_eq!(soc.get_cpu().AW, 0x6788);
-    }
-}
+mod v30mz_test;

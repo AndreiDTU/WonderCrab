@@ -49,6 +49,9 @@ impl SoC {
                     let byte = self.read_mem(addr);
                     self.cpu.read_responses.insert(addr, byte);
                 }
+                self.cpu.read_requests.clear();
+                let _ = self.cpu.execute();
+                continue;
             }
 
             break;
@@ -120,16 +123,23 @@ impl SoC {
     pub fn get_cpu(&mut self) -> &mut V30MZ {
         &mut self.cpu
     }
+
+    #[cfg(test)]
+    pub fn get_wram(&mut self) -> &mut [u8; 0xFFFF] {
+        &mut self.wram
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use crate::assert_eq_hex;
+
     use super::SoC;
 
     #[test]
     fn test_io_open_bus() {
         let soc = SoC::new();
-        assert_eq!(soc.read_io(0x100), 0x90);
-        assert_eq!(soc.read_io(0x1B9), 0x90);
+        assert_eq_hex!(soc.read_io(0x100), 0x90);
+        assert_eq_hex!(soc.read_io(0x1B9), 0x90);
     }
 }
