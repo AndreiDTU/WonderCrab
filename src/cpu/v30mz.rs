@@ -75,7 +75,8 @@ pub struct V30MZ {
 
     // I/O BUS
     pub io_responses: HashMap<u16, u8>,
-    pub io_requests: Vec<u16>,
+    pub io_read_requests: Vec<u16>,
+    pub io_write_requests: HashMap<u16, u8>,
 }
 
 impl MemBus for V30MZ {
@@ -100,7 +101,7 @@ impl IOBus for V30MZ {
     fn read_io(&mut self, addr: u16) -> Result<u8, ()> {
         match self.io_responses.get(&addr) {
             None => {
-                self.io_requests.push(addr);
+                self.io_read_requests.push(addr);
                 Err(())
             }
             Some(byte) => {
@@ -110,7 +111,7 @@ impl IOBus for V30MZ {
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
-        todo!()
+        self.io_write_requests.insert(addr, byte);
     }
 }
 
@@ -128,7 +129,7 @@ impl V30MZ {
             current_op: Vec::with_capacity(5), op_request: false,
             segment_override: None, read_requests: Vec::new(), read_responses: HashMap::new(), write_requests: HashMap::new(),
 
-            io_responses: HashMap::with_capacity(2), io_requests: Vec::with_capacity(2),
+            io_responses: HashMap::with_capacity(2), io_read_requests: Vec::with_capacity(2), io_write_requests: HashMap::with_capacity(2),
         }
     }
 
@@ -146,6 +147,14 @@ impl V30MZ {
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
+            // PUSH
+            0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x6A | 0x9C => self.push_op(op.op2),
+            0x60 => Ok(self.push_r()),
+
+            // POP
+            0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op1),
+            0x61 => self.pop_r(),
+
             // MOV
             0x9E => {
                 let AH = (self.AW >> 8) as u8;
@@ -169,8 +178,17 @@ impl V30MZ {
             // CVTWL
             0x99 => self.cvtwl(),
 
+            // SALC
+            0xD6 => Ok(self.salc()),
+
+            // TRANS
+            0xD7 => self.trans(),
+
             // IN
             0xE4 | 0xE5 | 0xEC | 0xED => self.in_op(op.mode, op.op2),
+
+            // OUT
+            0xE6 | 0xE7 | 0xEE | 0xEF => self.out_op(op.mode, op.op2),
                 
             _ => todo!(),
         }?;
@@ -186,6 +204,88 @@ impl V30MZ {
     }
 
     // Instructions
+
+    fn push_op(&mut self, src: Operand) -> Result<(), ()> {
+        // Stores a 16-bit value on the stack.
+        let src = match src {
+            Operand::MEMORY => {
+                self.expect_op_bytes(2)?;
+                self.resolve_mem_src_16(self.current_op[1])?
+            },
+            Operand::REGISTER => {
+                let bits = self.current_op[0] & 0b111;
+                self.resolve_register_operand(bits, Mode::M16).try_into().unwrap()
+            },
+            Operand::ACCUMULATOR => self.AW,
+            Operand::IMMEDIATE => {
+                self.expect_op_bytes(3)?;
+                u16::from_le_bytes([self.current_op[1], self.current_op[2]])
+            },
+            Operand::SEGMENT => {
+                let bits = self.current_op[0] >> 3;
+                *self.resolve_segment(bits)
+            },
+            Operand::DIRECT => unreachable!(),
+
+            // Using this to represent PUSH PSW
+            // PUSH R implemented separately
+            Operand::NONE => self.PSW.bits()
+        };
+        self.push(src);
+
+        Ok(())
+    }
+
+    fn push_r(&mut self) {
+        let temp = self.SP;
+        self.push(self.AW);
+        self.push(self.CW);
+        self.push(self.DW);
+        self.push(self.BW);
+        self.push(temp);
+        self.push(self.BP);
+        self.push(self.IX);
+        self.push(self.IY);
+    }
+
+    fn pop_op(&mut self, dest: Operand) -> Result<(), ()> {
+        // Retrieves a 16-bit value from the stack and stores it in the operand.
+        let src = self.pop()?;
+        match dest {
+            Operand::MEMORY => self.write_mem_operand_16(src)?,
+            Operand::REGISTER => {
+                let bits = self.current_op[0] & 0b111;
+                let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
+                *r = src;
+            },
+            Operand::ACCUMULATOR => self.AW = src,
+            Operand::SEGMENT => {
+                let bits = (self.current_op[0] & 0b0001_1000) >> 3;
+                *self.resolve_segment(bits) = src;
+            }
+
+            // Using this to represent POP PSW
+            // POP R implemented separately
+            Operand::NONE => self.PSW = CpuStatus::from_bits_truncate(src),
+
+            _ => unreachable!(),
+        };
+
+        Ok(())
+    }
+
+    fn pop_r(&mut self) -> Result<(), ()> {
+        self.IY = self.pop()?;
+        self.IX = self.pop()?;
+        self.BP = self.pop()?;
+        self.SP = self.SP.wrapping_add(2);
+        self.BW = self.pop()?;
+        self.DW = self.pop()?;
+        self.CW = self.pop()?;
+        self.AW = self.pop()?;
+
+        Ok(())
+    }
 
     fn mov(&mut self, operation: &OpCode) -> Result<(), ()> {
         // Copies the value of op2 to op1
@@ -299,6 +399,26 @@ impl V30MZ {
         Ok(())
     }
 
+    fn salc(&mut self) {
+        // Sets AL according to the status of CY. If CY is clear,
+        // stores 0x00 into AL. Otherwise, stores 0xFF into AL. 
+        if self.PSW.contains(CpuStatus::CARRY) {
+            self.AW = swap_l(self.AW, 0xFF);
+        } else {
+            self.AW = swap_l(self.AW, 0x00);
+        }
+    }
+
+    fn trans(&mut self) -> Result<(), ()> {
+        // Calculates a memory offset as the unsigned sum of BW and AL,
+        // and loads the byte at that offset into AL. 
+        let offset = self.BW.wrapping_add(self.AW & 0b0000_1111);
+        let addr = self.get_physical_address(offset, self.DS0);
+        self.AW = swap_l(self.AW, self.read_mem(addr)?);
+        
+        Ok(())
+    }
+
     fn in_op(&mut self, mode: Mode, src: Operand) -> Result<(), ()> {
         // Inputs the value from the I/O port pointed to by src and stores it into AL.
         // If 16-bit, inputs the value from the I/O port pointed to by src + 1 and stores it into AH.
@@ -325,7 +445,33 @@ impl V30MZ {
         Ok(())
     }
 
+    fn out_op(&mut self, mode: Mode, dest: Operand) -> Result<(), ()> {
+        // Outputs the value of AL to the I/O port pointed to by dest.
+        // If 16-bit, outputs the value of AH to the I/O port pointed to by dest + 1.
+
+        let dest = self.get_io_address(dest)?;
+        match mode {
+            Mode::M8 => self.write_io(dest, self.AW as u8),
+            Mode::M16 => self.write_io(dest.wrapping_add(1), (self.AW >> 8) as u8),
+            Mode::M32 => unreachable!()
+        }
+
+        Ok(())
+    }
+
     // Utility functions
+
+    fn push(&mut self, src: u16) {
+        self.SP = self.SP.wrapping_sub(2);
+        let addr = self.get_stack_address();
+        self.write_mem_16(addr, src);
+    }
+
+    fn pop(&mut self) -> Result<u16, ()> {
+        let addr = self.get_stack_address();
+        self.PS = self.PS.wrapping_add(2);
+        self.read_mem_16(addr)
+    }
 
     fn load_register_immediate(&mut self, mode: Mode) -> Result<(), ()> {
         match mode {
@@ -359,34 +505,35 @@ impl V30MZ {
     }
 
     fn resolve_src_16(&mut self, op: Operand) -> Result<u16, ()> {
-        let src = match op {
+        match op {
             Operand::MEMORY => {
                 self.expect_op_bytes(2)?;
                 let byte = self.current_op[1];
 
-                self.resolve_mem_src_16(byte)?
+                self.resolve_mem_src_16(byte)
             },
             Operand::REGISTER => {
                 self.expect_op_bytes(2)?;
 
                 let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
-                self.resolve_register_operand(r_bits, Mode::M16).try_into()?
+                self.resolve_register_operand(r_bits, Mode::M16).try_into()
             }
-            Operand::ACCUMULATOR => self.AW,
+            Operand::ACCUMULATOR => Ok(self.AW),
             Operand::IMMEDIATE => {
                 self.expect_op_bytes(3)?;
-                u16::from_le_bytes([self.current_op[1], self.current_op[2]])
+                Ok(u16::from_le_bytes([self.current_op[1], self.current_op[2]]))
             },
             Operand::SEGMENT => {
                 self.expect_op_bytes(2)?;
                 let s_bits = (self.current_op[1] & 0b0001_1000) >> 3;
-                *self.resolve_segment(s_bits)
+                Ok(*self.resolve_segment(s_bits))
             },
-            Operand::DIRECT => todo!(),
+            Operand::DIRECT => {
+                let addr = self.get_direct_mem_address()?;
+                self.read_mem_16(addr)
+            }
             Operand::NONE => panic!("None src not supported"),
-        };
-
-        Ok(src)
+        }
     }
 
     fn resolve_src_8(&mut self, op: Operand) -> Result<u8, ()> {
@@ -409,7 +556,10 @@ impl V30MZ {
 
                 Ok(self.current_op[1])
             }
-            Operand::DIRECT => todo!(),
+            Operand::DIRECT => {
+                let addr = self.get_direct_mem_address()?;
+                self.read_mem(addr)
+            }
             _ => panic!("Unsuported 8-bit source type"),
         }
     }
@@ -450,29 +600,42 @@ impl V30MZ {
         }
     }
 
-    fn write_src_to_dest_16(&mut self, op: Operand, src: u16) -> Result<(), ()> {
-        match op {
+    fn write_src_to_dest_16(&mut self, dest: Operand, src: u16) -> Result<(), ()> {
+        match dest {
             Operand::MEMORY => self.write_mem_operand_16(src)?,
             Operand::REGISTER => self.write_reg_operand_16(src)?,
             Operand::ACCUMULATOR => self.AW = src,
             Operand::SEGMENT => self.write_to_seg_operand(src)?,
-            Operand::DIRECT => todo!(),
+            Operand::DIRECT => {
+                let addr = self.get_direct_mem_address()?;
+                self.write_mem_16(addr, src)
+            }
             _ => panic!("Unsupported 16-bit destination")
         }
 
         Ok(())
     }
 
-    fn write_src_to_dest_8(&mut self, op: Operand, src: u8) -> Result<(), ()> {
-        match op {
+    fn write_src_to_dest_8(&mut self, dest: Operand, src: u8) -> Result<(), ()> {
+        match dest {
             Operand::MEMORY => self.write_mem_operand_8(src)?,
             Operand::REGISTER => self.write_reg_operand_8(src)?,
             Operand::ACCUMULATOR => self.AW = swap_l(self.AW, src),
-            Operand::DIRECT => todo!(),
+            Operand::DIRECT => {
+                let addr = self.get_direct_mem_address()?;
+                self.write_mem(addr, src)
+            }
             _ => panic!("Unsupported 8-bit destination type"),
         };
 
         Ok(())
+    }
+
+    fn get_direct_mem_address(&mut self) -> Result<u32, ()> {
+        self.expect_op_bytes(3)?;
+
+        let offset = u16::from_le_bytes([self.current_op[1], self.current_op[2]]);
+        Ok(self.apply_segment(offset, self.DS0))
     }
 
     fn write_mem_operand_16(&mut self, src: u16) -> Result<(), ()> {
@@ -656,12 +819,6 @@ impl V30MZ {
         self.apply_segment(offset, segment)
     }
 
-    fn apply_segment(&self, offset: u16, segment: u16) -> u32 {
-        let segment = (segment as u32) << 4;
-        let offset = offset as u32;
-        (offset + segment) & 0xFFFFF
-    }
-
     fn get_io_address(&mut self, src: Operand) -> Result<u16, ()> {
         // Use either the next byte padded with 0s or DW as the io_address
         match src {
@@ -676,6 +833,16 @@ impl V30MZ {
             }
             _ => panic!("Unsupported src operand for I/O Port"),
         }
+    }
+
+    fn get_stack_address(&self) -> u32 {
+        self.apply_segment(self.PS, self.SS)
+    }
+
+    fn apply_segment(&self, offset: u16, segment: u16) -> u32 {
+        let segment = (segment as u32) << 4;
+        let offset = offset as u32;
+        (offset + segment) & 0xFFFFF
     }
 
     fn finish_op(&mut self) {

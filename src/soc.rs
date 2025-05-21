@@ -8,7 +8,7 @@ pub struct SoC {
     wram: [u8; 0xFFFF],
 
     // I/O
-    io_in: [u8; 0xFF],
+    io: [u8; 0xFF],
 }
 
 pub trait MemBus {
@@ -88,11 +88,11 @@ impl IOBus for SoC {
             return Ok(0x90)
         }
 
-        Ok(self.io_in[port as usize])
+        Ok(self.io[port as usize])
     }
     
     fn write_io(&mut self, addr: u16, byte: u8) {
-        todo!()
+        self.io[addr as usize] = byte
     }
 }
 
@@ -103,7 +103,7 @@ impl SoC {
 
             wram: [0; 0xFFFF],
 
-            io_in: [0; 0xFF],
+            io: [0; 0xFF],
         }
     }
 
@@ -121,12 +121,12 @@ impl SoC {
             }
 
             // I/O Requests
-            if !self.cpu.io_requests.is_empty() {
-                for addr in self.cpu.io_requests.clone() {
+            if !self.cpu.io_read_requests.is_empty() {
+                for addr in self.cpu.io_read_requests.clone() {
                     let byte = self.read_io(addr).unwrap();
                     self.cpu.io_responses.insert(addr, byte);
                 }
-                self.cpu.io_requests.clear();
+                self.cpu.io_read_requests.clear();
                 let _ = self.cpu.execute();
                 continue;
             }
@@ -165,7 +165,7 @@ impl SoC {
     #[cfg(test)]
     pub fn set_io(&mut self, io: Vec<u8>) {
         for i in 0..io.len() {
-            self.io_in[i] = io[i];
+            self.io[i] = io[i];
         }
     }
 
