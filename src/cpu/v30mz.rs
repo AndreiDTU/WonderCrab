@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use bitflags::bitflags;
 
+use crate::soc::{IOBus, MemBus};
+
 use super::{opcode::{OpCode, CPU_OP_CODES}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
 bitflags! {
@@ -72,9 +74,44 @@ pub struct V30MZ {
     pub write_requests: HashMap<u32, u8>,
 
     // I/O BUS
-    pub io_response: Vec<u8>,
-    io_address: u16,
-    pub io_request: bool,
+    pub io_responses: HashMap<u16, u8>,
+    pub io_requests: Vec<u16>,
+}
+
+impl MemBus for V30MZ {
+    fn read_mem(&mut self, addr: u32) -> Result<u8, ()> {
+        match self.read_responses.get(&addr) {
+            None => {
+                self.read_requests.push(addr);
+                Err(())
+            }
+            Some(byte) => {
+                Ok(*byte)
+            }
+        }
+    }
+
+    fn write_mem(&mut self, addr: u32, data: u8) {
+        self.write_requests.insert(addr, data);
+    }
+}
+
+impl IOBus for V30MZ {
+    fn read_io(&mut self, addr: u16) -> Result<u8, ()> {
+        match self.io_responses.get(&addr) {
+            None => {
+                self.io_requests.push(addr);
+                Err(())
+            }
+            Some(byte) => {
+                Ok(*byte)
+            } 
+        }
+    }
+
+    fn write_io(&mut self, addr: u16, byte: u8) {
+        todo!()
+    }
 }
 
 impl V30MZ {
@@ -91,7 +128,7 @@ impl V30MZ {
             current_op: Vec::with_capacity(5), op_request: false,
             segment_override: None, read_requests: Vec::new(), read_responses: HashMap::new(), write_requests: HashMap::new(),
 
-            io_response: Vec::with_capacity(2), io_address: 0, io_request: false,
+            io_responses: HashMap::with_capacity(2), io_requests: Vec::with_capacity(2),
         }
     }
 
@@ -118,7 +155,7 @@ impl V30MZ {
                 Ok(())
             }
             0x9F => {
-                self.set_AH(self.PSW.bits() as u8);
+                self.AW = swap_h(self.AW, self.PSW.bits() as u8);
                 Ok(())
             }
             0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(op),
@@ -145,12 +182,6 @@ impl V30MZ {
     pub fn get_pc_address(&mut self) -> u32 {
         let addr = self.apply_segment(self.PC, self.PS);
         self.PC += 1;
-        addr
-    }
-
-    pub fn get_io_address(&mut self) -> u16 {
-        let addr = self.io_address;
-        self.io_address += 1;
         addr
     }
 
@@ -216,11 +247,11 @@ impl V30MZ {
             MemOperand::Register(RegisterType::RW(r)) => self.AW = *r,
             MemOperand::Register(RegisterType::RH(rh)) => {
                 let AH = *rh as u8;
-                self.set_AH(AH);
+                self.AW = swap_h(self.AW, AH);
             }
             MemOperand::Register(RegisterType::RL(rl)) => {
                 let AL = *rl as u8;
-                self.set_AL(AL);
+                self.AW = swap_l(self.AW, AL);
             }
         }
 
@@ -255,21 +286,21 @@ impl V30MZ {
         // Inputs the value from the I/O port pointed to by src and stores it into AL.
         // If 16-bit, inputs the value from the I/O port pointed to by src + 1 and stores it into AH.
 
-        self.set_io_address(src)?;
+        let addr = self.get_io_address(src)?;
 
         // Request either one byte to be loaded into AL
         // or two bytes to be loaded into AL and AH respectively
         match mode {
             Mode::M8 => {
-                let AL = self.read_io_8()?;
+                let AL = self.read_io(addr)?;
 
-                self.set_AL(AL);
+                self.AW = swap_l(self.AW, AL);
             }
             Mode::M16 => {
-                let (AL, AH) = self.read_io_16()?;
+                let (AL, AH) = self.read_io_16(addr)?;
 
-                self.set_AL(AL);
-                self.set_AH(AH);
+                self.AW = swap_l(self.AW, AL);
+                self.AW = swap_h(self.AW, AH);
             }
             Mode::M32 => panic!("Unsuported mode"),
         }
@@ -278,41 +309,6 @@ impl V30MZ {
     }
 
     // Utility functions
-
-    fn set_io_address(&mut self, src: Operand) -> Result<(), ()> {
-        // Use either the next byte padded with 0s or DW as the io_address
-        if self.io_response.is_empty() {
-            self.io_address = match src {
-                Operand::IMMEDIATE => {
-                    // Need at least one operand byte to access immediate value
-                    self.expect_op_bytes(2)?;
-
-                    self.current_op[1] as u16
-                }
-                Operand::NONE => {
-                    self.DW
-                }
-                _ => panic!("Unsupported src operand for I/O Port"),
-            }
-        }
-
-        Ok(())
-    }
-
-    fn read_io_8(&mut self) -> Result<u8, ()> {
-        self.io_request = self.io_response.len() == 0;
-        if self.io_request {return Err(())}
-
-        Ok(self.io_response[0])
-    }
-
-    fn read_io_16(&mut self) -> Result<(u8, u8), ()> {
-        self.io_request = self.io_response.len() < 2;
-        if self.io_request {return Err(())}
-
-        Ok((self.io_response[0], self.io_response[1]))
-
-    }
 
     fn load_register_immediate(&mut self, mode: Mode) -> Result<(), ()> {
         match mode {
@@ -341,28 +337,6 @@ impl V30MZ {
             }
             Mode::M32 => panic!("Mode not supported for immediate values!"),
         }
-
-        Ok(())
-    }
-
-    fn write_src_to_dest_16(&mut self, op: Operand, src: u16) -> Result<(), ()> {
-        match op {
-            Operand::MEMORY => self.write_to_mem_operand_16(src)?,
-            Operand::REGISTER => self.write_reg_operand_16(src)?,
-            Operand::ACCUMULATOR => self.AW = src,
-            Operand::SEGMENT => self.write_to_seg_operand_16(src)?,
-            Operand::DIRECT => todo!(),
-            _ => panic!("Unsupported 16-bit destination")
-        }
-
-        Ok(())
-    }
-
-    fn write_to_seg_operand_16(&mut self, src: u16) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let s_bits = (self.current_op[1] & 0b0001_1000) >> 3;
-
-        *self.resolve_segment(s_bits) = src;
 
         Ok(())
     }
@@ -398,82 +372,6 @@ impl V30MZ {
         Ok(src)
     }
 
-    fn write_src_to_dest_8(&mut self, op: Operand, src: u8) -> Result<(), ()> {
-        match op {
-            Operand::MEMORY => self.write_to_mem_operand_8(src)?,
-            Operand::REGISTER => self.write_reg_operand_8(src)?,
-            Operand::ACCUMULATOR => self.set_AL(src),
-            Operand::DIRECT => todo!(),
-            _ => panic!("Unsupported 8-bit destination type"),
-        };
-
-        Ok(())
-    }
-
-    fn write_to_mem_operand_8(&mut self, src: u8) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let byte = self.current_op[1];
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8)?;
-
-        match mem_operand {
-            MemOperand::Offset(offset) => {
-                let addr = self.get_physical_address(offset, default_segment);
-                self.write_mem(addr, src);
-            }
-            MemOperand::Register(register_type) => match register_type {
-                RegisterType::RW(_) => unreachable!(),
-                RegisterType::RH(rh) => *rh = swap_h(*rh, src),
-                RegisterType::RL(rl) => *rl = swap_l(*rl, src),
-            }
-        }
-
-        Ok(())
-    }
-
-    fn write_to_mem_operand_16(&mut self, src: u16) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let byte = self.current_op[1];
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16)?;
-
-        match mem_operand {
-            MemOperand::Offset(offset) => {
-                let addr = self.get_physical_address(offset, default_segment);
-                self.write_mem_16(addr, src);
-            }
-            MemOperand::Register(register_type) => match register_type {
-                RegisterType::RW(r) => *r = src,
-                _ => unreachable!()
-            }
-        }
-
-        Ok(())
-    }
-
-    fn write_reg_operand_8(&mut self, src: u8) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
-
-        match self.resolve_register_operand(r_bits, Mode::M8) {
-            RegisterType::RW(_) => unreachable!(),
-            RegisterType::RH(rh) => *rh = swap_h(*rh, src),
-            RegisterType::RL(rl) => *rl = swap_l(*rl, src),
-        }
-
-        Ok(())
-    }
-
-    fn write_reg_operand_16(&mut self, src: u16) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
-
-        match self.resolve_register_operand(r_bits, Mode::M16) {
-            RegisterType::RW(r) => *r = src,
-            _ => unreachable!(),
-        }
-
-        Ok(())
-    }
-
     fn resolve_src_8(&mut self, op: Operand) -> Result<u8, ()> {
         match op {
             Operand::MEMORY => {
@@ -499,21 +397,15 @@ impl V30MZ {
         }
     }
 
-    // Returns Err if the current_op is shorter than the amount of bytes
-    fn expect_op_bytes(&mut self, bytes: usize) -> Result<(), ()> {
-        self.op_request = self.current_op.len() < bytes;
-        if self.op_request {return Err(())} else {Ok(())}
-    }
-
-    fn resolve_mem_src_8(&mut self, byte: u8) -> Result<u8, ()> {
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8)?;
+    fn resolve_mem_src_32(&mut self, byte: u8) -> Result<(u16, u16), ()> {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16)?;
 
         match mem_operand {
             MemOperand::Offset(offset) => {
                 let addr = self.get_physical_address(offset, default_segment);
-                self.read_mem(addr)
+                Ok(self.read_mem_32(addr)?)
             }
-            MemOperand::Register(register_type) => register_type.try_into()
+            MemOperand::Register(_) => unimplemented!()
         }
     }
 
@@ -529,84 +421,114 @@ impl V30MZ {
         }
     }
 
-    fn resolve_mem_src_32(&mut self, byte: u8) -> Result<(u16, u16), ()> {
+    fn resolve_mem_src_8(&mut self, byte: u8) -> Result<u8, ()> {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8)?;
+
+        match mem_operand {
+            MemOperand::Offset(offset) => {
+                let addr = self.get_physical_address(offset, default_segment);
+                self.read_mem(addr)
+            }
+            MemOperand::Register(register_type) => register_type.try_into()
+        }
+    }
+
+    fn write_src_to_dest_16(&mut self, op: Operand, src: u16) -> Result<(), ()> {
+        match op {
+            Operand::MEMORY => self.write_to_mem_operand_16(src)?,
+            Operand::REGISTER => self.write_reg_operand_16(src)?,
+            Operand::ACCUMULATOR => self.AW = src,
+            Operand::SEGMENT => self.write_to_seg_operand(src)?,
+            Operand::DIRECT => todo!(),
+            _ => panic!("Unsupported 16-bit destination")
+        }
+
+        Ok(())
+    }
+
+    fn write_src_to_dest_8(&mut self, op: Operand, src: u8) -> Result<(), ()> {
+        match op {
+            Operand::MEMORY => self.write_to_mem_operand_8(src)?,
+            Operand::REGISTER => self.write_reg_operand_8(src)?,
+            Operand::ACCUMULATOR => self.AW = swap_l(self.AW, src),
+            Operand::DIRECT => todo!(),
+            _ => panic!("Unsupported 8-bit destination type"),
+        };
+
+        Ok(())
+    }
+
+    fn write_to_mem_operand_16(&mut self, src: u16) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let byte = self.current_op[1];
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16)?;
 
         match mem_operand {
             MemOperand::Offset(offset) => {
                 let addr = self.get_physical_address(offset, default_segment);
-                Ok((self.read_mem_16(addr)?, self.read_mem_16(addr.wrapping_add(2))?))
+                self.write_mem_16(addr, src);
             }
-            MemOperand::Register(_) => unimplemented!()
-        }
-    }
-
-    fn get_physical_address(&self, offset: u16, default_segment: u16) -> u32 {
-        let segment = match self.segment_override {
-            None => default_segment,
-            Some(s) => s,
-        };
-
-        self.apply_segment(offset, segment)
-    }
-
-    fn read_mem(&mut self, addr: u32) -> Result<u8, ()> {
-        match self.read_responses.get(&addr) {
-            None => {
-                self.read_requests.push(addr);
-                Err(())
-            }
-            Some(byte) => {
-                Ok(*byte)
+            MemOperand::Register(register_type) => match register_type {
+                RegisterType::RW(r) => *r = src,
+                _ => unreachable!()
             }
         }
+
+        Ok(())
     }
 
-    fn read_mem_16(&mut self, addr: u32) -> Result<u16, ()> {
-        let lo = self.read_mem(addr)?;
-        let hi = self.read_mem(addr.wrapping_add(1))?;
-        Ok(u16::from_le_bytes([lo, hi]))
-    }
+    fn write_to_mem_operand_8(&mut self, src: u8) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let byte = self.current_op[1];
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8)?;
 
-    fn write_mem(&mut self, addr: u32, data: u8) {
-        self.write_requests.insert(addr, data);
-    }
-
-    fn write_mem_16(&mut self, addr: u32, data: u16) {
-        let bytes = data.to_le_bytes();
-        self.write_requests.insert(addr, bytes[0]);
-        self.write_requests.insert(addr.wrapping_add(1), bytes[1]);
-    }
-
-    fn finish_op(&mut self) {
-        self.current_op.clear();
-        self.io_response.clear();
-        self.read_requests.clear();
-        self.read_responses.clear();
-    }
-
-    fn set_AL(&mut self, AL: u8) {
-        self.AW = (self.AW & 0xFF00) | AL as u16
-    }
-
-    fn set_AH(&mut self, AH: u8) {
-        self.AW = (self.AW & 0x00FF) | ((AH as u16) << 8)
-    }
-
-    fn resolve_segment(&mut self, bits: u8) -> &mut u16 {
-        match bits {
-            0 => &mut self.DS1,
-            1 => &mut self.PS,
-            2 => &mut self.SS,
-            3 => &mut self.DS0,
-            e => panic!("Invalid segment index: {}", e),
+        match mem_operand {
+            MemOperand::Offset(offset) => {
+                let addr = self.get_physical_address(offset, default_segment);
+                self.write_mem(addr, src);
+            }
+            MemOperand::Register(register_type) => match register_type {
+                RegisterType::RW(_) => unreachable!(),
+                RegisterType::RH(rh) => *rh = swap_h(*rh, src),
+                RegisterType::RL(rl) => *rl = swap_l(*rl, src),
+            }
         }
+
+        Ok(())
     }
 
-    fn apply_segment(&self, offset: u16, segment: u16) -> u32 {
-        let segment = (segment as u32) << 4;
-        let offset = offset as u32;
-        (offset + segment) & 0xFFFFF
+    fn write_reg_operand_16(&mut self, src: u16) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
+
+        match self.resolve_register_operand(r_bits, Mode::M16) {
+            RegisterType::RW(r) => *r = src,
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    fn write_reg_operand_8(&mut self, src: u8) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
+
+        match self.resolve_register_operand(r_bits, Mode::M8) {
+            RegisterType::RW(_) => unreachable!(),
+            RegisterType::RH(rh) => *rh = swap_h(*rh, src),
+            RegisterType::RL(rl) => *rl = swap_l(*rl, src),
+        }
+
+        Ok(())
+    }
+
+    fn write_to_seg_operand(&mut self, src: u16) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let s_bits = (self.current_op[1] & 0b0001_1000) >> 3;
+
+        *self.resolve_segment(s_bits) = src;
+
+        Ok(())
     }
 
     fn resolve_register_operand(&mut self, bits: u8, mode: Mode) -> RegisterType<'_> {
@@ -690,6 +612,60 @@ impl V30MZ {
         };
 
         Ok((MemOperand::Offset(base.wrapping_add(displacement)), result_segment))
+    }
+
+    fn resolve_segment(&mut self, bits: u8) -> &mut u16 {
+        match bits {
+            0 => &mut self.DS1,
+            1 => &mut self.PS,
+            2 => &mut self.SS,
+            3 => &mut self.DS0,
+            e => panic!("Invalid segment index: {}", e),
+        }
+    }
+
+    // Returns Err if the current_op is shorter than the amount of bytes
+    fn expect_op_bytes(&mut self, bytes: usize) -> Result<(), ()> {
+        self.op_request = self.current_op.len() < bytes;
+        if self.op_request {return Err(())} else {Ok(())}
+    }
+
+    fn get_physical_address(&self, offset: u16, default_segment: u16) -> u32 {
+        let segment = match self.segment_override {
+            None => default_segment,
+            Some(s) => s,
+        };
+
+        self.apply_segment(offset, segment)
+    }
+
+    fn apply_segment(&self, offset: u16, segment: u16) -> u32 {
+        let segment = (segment as u32) << 4;
+        let offset = offset as u32;
+        (offset + segment) & 0xFFFFF
+    }
+
+    fn get_io_address(&mut self, src: Operand) -> Result<u16, ()> {
+        // Use either the next byte padded with 0s or DW as the io_address
+        match src {
+            Operand::IMMEDIATE => {
+                // Need at least one operand byte to access immediate value
+                self.expect_op_bytes(2)?;
+
+                Ok(self.current_op[1] as u16)
+            }
+            Operand::NONE => {
+                Ok(self.DW)
+            }
+            _ => panic!("Unsupported src operand for I/O Port"),
+        }
+    }
+
+    fn finish_op(&mut self) {
+        self.current_op.clear();
+        self.io_responses.clear();
+        self.read_requests.clear();
+        self.read_responses.clear();
     }
 }
 
