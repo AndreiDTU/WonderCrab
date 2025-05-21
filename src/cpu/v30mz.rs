@@ -181,7 +181,7 @@ impl V30MZ {
 
     pub fn get_pc_address(&mut self) -> u32 {
         let addr = self.apply_segment(self.PC, self.PS);
-        self.PC += 1;
+        self.PC = self.PC.wrapping_add(1);
         addr
     }
 
@@ -194,6 +194,23 @@ impl V30MZ {
 
         if (op1, op2) == (Operand::REGISTER, Operand::IMMEDIATE) {
             return self.load_register_immediate(mode);
+        }
+
+        if (op1, op2) == (Operand::MEMORY, Operand::IMMEDIATE) {
+            self.expect_op_bytes(2)?;
+            let byte = self.current_op[1];
+            self.resolve_mem_operand(byte, mode)?;
+            let imm_addr = self.get_pc_address();
+            
+            if mode == Mode::M8 {
+                let src = self.read_mem(imm_addr)?;
+                self.write_mem_operand_8(src)?;
+            } else {
+                let src = self.read_mem_16(imm_addr)?;
+                self.PC = self.PC.wrapping_add(1);
+                self.write_mem_operand_16(src)?;
+            }
+            return Ok(());
         }
 
         match op3 {
@@ -217,8 +234,8 @@ impl V30MZ {
 
                 self.write_reg_operand_16(src.0)?;
                 match operation.code {
-                    0xC4 => self.DS0 = src.1,
-                    0xC5 => self.DS1 = src.1,
+                    0xC4 => self.DS1 = src.1,
+                    0xC5 => self.DS0 = src.1,
                     code => panic!("Not a valid 3-term move opcode: {:02X}", code),
                 }
             }
@@ -435,7 +452,7 @@ impl V30MZ {
 
     fn write_src_to_dest_16(&mut self, op: Operand, src: u16) -> Result<(), ()> {
         match op {
-            Operand::MEMORY => self.write_to_mem_operand_16(src)?,
+            Operand::MEMORY => self.write_mem_operand_16(src)?,
             Operand::REGISTER => self.write_reg_operand_16(src)?,
             Operand::ACCUMULATOR => self.AW = src,
             Operand::SEGMENT => self.write_to_seg_operand(src)?,
@@ -448,7 +465,7 @@ impl V30MZ {
 
     fn write_src_to_dest_8(&mut self, op: Operand, src: u8) -> Result<(), ()> {
         match op {
-            Operand::MEMORY => self.write_to_mem_operand_8(src)?,
+            Operand::MEMORY => self.write_mem_operand_8(src)?,
             Operand::REGISTER => self.write_reg_operand_8(src)?,
             Operand::ACCUMULATOR => self.AW = swap_l(self.AW, src),
             Operand::DIRECT => todo!(),
@@ -458,7 +475,7 @@ impl V30MZ {
         Ok(())
     }
 
-    fn write_to_mem_operand_16(&mut self, src: u16) -> Result<(), ()> {
+    fn write_mem_operand_16(&mut self, src: u16) -> Result<(), ()> {
         self.expect_op_bytes(2)?;
         let byte = self.current_op[1];
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16)?;
@@ -477,7 +494,7 @@ impl V30MZ {
         Ok(())
     }
 
-    fn write_to_mem_operand_8(&mut self, src: u8) -> Result<(), ()> {
+    fn write_mem_operand_8(&mut self, src: u8) -> Result<(), ()> {
         self.expect_op_bytes(2)?;
         let byte = self.current_op[1];
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8)?;

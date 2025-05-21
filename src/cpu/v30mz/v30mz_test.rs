@@ -1,7 +1,7 @@
 use crate::soc::SoC;
 use crate::assert_eq_hex;
 
-use super::V30MZ;
+use super::*;
 
 #[test]
 fn test_0x88_mov_reg_to_mem_8bit() {
@@ -222,6 +222,115 @@ fn test_0x99_cvtwl() {
     cpu.current_op = vec![0x99];
     let _ = cpu.execute();
     assert_eq_hex!(cpu.DW, 0x0000);
+}
+
+#[test]
+fn test_0x9e_mov_ah_to_psw() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0x9E, // PSW <- AH
+    ]);
+
+    soc.get_cpu().AW = 0x55_00;
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0001);
+    assert_eq_hex!(soc.get_cpu().PSW.bits() & 0xFF, 0x55);
+}
+
+#[test]
+fn test_0x9f_mov_psw_to_ah() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0x9F, // AH <- PSW
+    ]);
+
+    soc.get_cpu().PSW = CpuStatus::from_bits_truncate(0b1010_1010);
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0001);
+    assert_eq_hex!(soc.get_cpu().AW >> 8, 0xAA);
+}
+
+#[test]
+fn test_0xb0_mov_imm_to_reg_8bit() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0xB0, 0x12, // AL <- 0x12
+    ]);
+
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0002);
+    assert_eq_hex!(soc.get_cpu().AW, 0x0012);
+}
+
+#[test]
+fn test_0xb8_mov_imm_to_reg_16bit() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0xB8, 0x34, 0x12, // AW <- 0x1234
+    ]);
+
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0003);
+    assert_eq_hex!(soc.get_cpu().AW, 0x1234);
+}
+
+#[test]
+fn test_0xc6_mov_imm_to_mem_8bit() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0xC6, 0x06, 0x00, 0x01, 0xAB, // WRAM[0x0100] <- 0xAB
+    ]);
+
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0005);
+    assert_eq_hex!(soc.get_wram()[0x0100], 0xAB);
+}
+
+#[test]
+fn test_0xc7_mov_imm_to_mem_16bit() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0xC7, 0x06, 0x00, 0x01, 0x34, 0x12, // WRAM[0x0100] <- 0x1234
+    ]);
+
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0006);
+    assert_eq_hex!(soc.get_wram()[0x0100], 0x34);
+    assert_eq_hex!(soc.get_wram()[0x0101], 0x12);
+}
+
+#[test]
+fn test_0xc4_mov_mem_to_ds1_reg() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0xC4, 0x06, 0x00, 0x01, // CW <- 0x1234, DS1 <- 0x5678
+    ]);
+    soc.get_wram()[0x0100] = 0x34;
+    soc.get_wram()[0x0101] = 0x12;
+    soc.get_wram()[0x0102] = 0x78;
+    soc.get_wram()[0x0103] = 0x56;
+
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+    assert_eq_hex!(soc.get_cpu().AW, 0x1234);
+    assert_eq_hex!(soc.get_cpu().DS1, 0x5678);
+}
+
+#[test]
+fn test_0xc5_mov_mem_to_ds0_reg() {
+    let mut soc = SoC::new();
+    soc.set_wram(vec![
+        0xC5, 0x06, 0x00, 0x01, // CW <- 0x1234, DS0 <- 0x5678
+    ]);
+    soc.get_wram()[0x0100] = 0x34;
+    soc.get_wram()[0x0101] = 0x12;
+    soc.get_wram()[0x0102] = 0x78;
+    soc.get_wram()[0x0103] = 0x56;
+
+    soc.tick();
+    assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+    assert_eq_hex!(soc.get_cpu().AW, 0x1234);
+    assert_eq_hex!(soc.get_cpu().DS0, 0x5678);
 }
 
 #[test]
