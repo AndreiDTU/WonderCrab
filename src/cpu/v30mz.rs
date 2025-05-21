@@ -140,8 +140,7 @@ impl V30MZ {
 
     pub fn execute(&mut self) -> Result<(), ()> {
         // CPU requires at least one byte of instruction code to execute
-        self.op_request = self.current_op.len() == 0;
-        if self.op_request {return Err(())}
+        self.expect_op_bytes(1)?;
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
 
@@ -332,7 +331,9 @@ impl V30MZ {
                 let byte = self.current_op[1];
                 let src = self.resolve_mem_src_32(byte)?;
 
-                self.write_reg_operand_16(src.0)?;
+                let bits = (self.current_op[1] & 0b0011_1000) >> 3;
+
+                self.write_reg_operand_16(src.0, bits)?;
                 match operation.code {
                     0xC4 => self.DS1 = src.1,
                     0xC5 => self.DS0 = src.1,
@@ -603,7 +604,12 @@ impl V30MZ {
     fn write_src_to_dest_16(&mut self, dest: Operand, src: u16) -> Result<(), ()> {
         match dest {
             Operand::MEMORY => self.write_mem_operand_16(src)?,
-            Operand::REGISTER => self.write_reg_operand_16(src)?,
+            Operand::REGISTER => {
+                self.expect_op_bytes(2)?;
+
+                let bits = (self.current_op[1] & 0b0011_1000) >> 3;
+                self.write_reg_operand_16(src, bits);
+            }
             Operand::ACCUMULATOR => self.AW = src,
             Operand::SEGMENT => self.write_to_seg_operand(src)?,
             Operand::DIRECT => {
@@ -619,7 +625,12 @@ impl V30MZ {
     fn write_src_to_dest_8(&mut self, dest: Operand, src: u8) -> Result<(), ()> {
         match dest {
             Operand::MEMORY => self.write_mem_operand_8(src)?,
-            Operand::REGISTER => self.write_reg_operand_8(src)?,
+            Operand::REGISTER => {
+                self.expect_op_bytes(2)?;
+
+                let bits = (self.current_op[1] & 0b0011_1000) >> 3;
+                self.write_reg_operand_8(src, bits);
+            }
             Operand::ACCUMULATOR => self.AW = swap_l(self.AW, src),
             Operand::DIRECT => {
                 let addr = self.get_direct_mem_address()?;
@@ -677,11 +688,8 @@ impl V30MZ {
         Ok(())
     }
 
-    fn write_reg_operand_16(&mut self, src: u16) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
-
-        match self.resolve_register_operand(r_bits, Mode::M16) {
+    fn write_reg_operand_16(&mut self, src: u16, bits: u8) -> Result<(), ()> {
+        match self.resolve_register_operand(bits, Mode::M16) {
             RegisterType::RW(r) => *r = src,
             _ => unreachable!(),
         }
@@ -689,11 +697,8 @@ impl V30MZ {
         Ok(())
     }
 
-    fn write_reg_operand_8(&mut self, src: u8) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let r_bits = (self.current_op[1] & 0b0011_1000) >> 3;
-
-        match self.resolve_register_operand(r_bits, Mode::M8) {
+    fn write_reg_operand_8(&mut self, src: u8, bits: u8) -> Result<(), ()> {
+        match self.resolve_register_operand(bits, Mode::M8) {
             RegisterType::RW(_) => unreachable!(),
             RegisterType::RH(rh) => *rh = swap_h(*rh, src),
             RegisterType::RL(rl) => *rl = swap_l(*rl, src),
