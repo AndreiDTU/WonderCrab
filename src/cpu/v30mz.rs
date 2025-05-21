@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bitflags::bitflags;
 
-use super::{opcode::CPU_OP_CODES, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
+use super::{opcode::{OpCode, CPU_OP_CODES}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
@@ -56,6 +56,7 @@ pub struct V30MZ {
 
     PSW: CpuStatus, // PROGRAM STATUS WORD
 
+
     // COMMUNICATION
 
     // MEMORY BUS
@@ -108,7 +109,20 @@ impl V30MZ {
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
-            0x88..=0x8C | 0x8E => self.mov(op.mode, op.op1, op.op2, op.op3),
+            0x9E => {
+                let AH = (self.AW >> 8) as u8;
+                let mut psw = self.PSW.bits();
+                psw = swap_l(psw, AH);
+                self.PSW = CpuStatus::from_bits_truncate(psw);
+                Ok(())
+            }
+            0x9F => {
+                self.set_AH(self.PSW.bits() as u8);
+                Ok(())
+            }
+            0x88..=0x8C | 0x8E | 0xA0..=0xA3 => 
+                self.mov(op),
+
             0x8D => self.ldea(op.mode),
             0x98 => self.cvtbw(),
             0x99 => self.cvtwl(),
@@ -136,7 +150,15 @@ impl V30MZ {
 
     // Instructions
 
-    fn mov(&mut self, mode: Mode, op1: Operand, op2: Operand, op3: Option<Operand>) -> Result<(), ()> {
+    fn mov(&mut self, operation: &OpCode) -> Result<(), ()> {
+        // Copies the value of op2 to op1
+        // or reads two u16s from op3 and copies their values to op1 and op2
+        let (mode, op1, op2, op3) = (operation.mode, operation.op1, operation.op2, operation.op3);
+
+        if (op1, op2) == (Operand::REGISTER, Operand::IMMEDIATE) {
+            return self.load_register_immediate(mode);
+        }
+
         match op3 {
             None => {
                 match mode {
@@ -147,11 +169,22 @@ impl V30MZ {
                     Mode::M16 => {
                         let src = self.resolve_src_16(op2)?;
                         self.write_src_to_dest_16(op1, src)?;
-                    },
+                    }
                     Mode::M32 => panic!("32-bit move only valid when op3 exists"),
                 }
             }
-            Some(_) => todo!()
+            Some(_) => {
+                self.expect_op_bytes(2)?;
+                let byte = self.current_op[1];
+                let src = self.resolve_mem_src_32(byte)?;
+
+                self.write_reg_operand_16(src.0)?;
+                match operation.code {
+                    0xC4 => self.DS0 = src.1,
+                    0xC5 => self.DS1 = src.1,
+                    code => panic!("Not a valid 3-term move opcode: {:02X}", code),
+                }
+            }
         }
 
         Ok(())
@@ -261,6 +294,37 @@ impl V30MZ {
     }
 
     // Utility functions
+
+    fn load_register_immediate(&mut self, mode: Mode) -> Result<(), ()> {
+        match mode {
+            Mode::M8 => {
+                self.expect_op_bytes(2)?;
+                let src = self.current_op[1];
+
+                let r_bits = (self.current_op[0] & 0b111) >> 3;
+                let dest = self.resolve_register_operand(r_bits, mode);
+                match dest {
+                    RegisterType::RH(rh) => *rh = swap_h(*rh, src),
+                    RegisterType::RL(rl) => *rl = swap_l(*rl, src),
+                    RegisterType::RW(_) => unreachable!(),
+                }
+            }
+            Mode::M16 => {
+                self.expect_op_bytes(3)?;
+                let src = u16::from_le_bytes([self.current_op[1], self.current_op[2]]);
+
+                let r_bits = (self.current_op[0] & 0b111) >> 3;
+                let dest = self.resolve_register_operand(r_bits, mode);
+                match dest {
+                    RegisterType::RW(r) => *r = src,
+                    _ => unreachable!(),
+                }
+            }
+            Mode::M32 => panic!("Mode not supported for immediate values!"),
+        }
+
+        Ok(())
+    }
 
     fn write_src_to_dest_16(&mut self, op: Operand, src: u16) -> Result<(), ()> {
         match op {
@@ -441,6 +505,18 @@ impl V30MZ {
                 self.read_mem_16(addr)
             }
             MemOperand::Register(register_type) => register_type.try_into()
+        }
+    }
+
+    fn resolve_mem_src_32(&mut self, byte: u8) -> Result<(u16, u16), ()> {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16)?;
+
+        match mem_operand {
+            MemOperand::Offset(offset) => {
+                let addr = self.get_physical_address(offset, default_segment);
+                Ok((self.read_mem_16(addr)?, self.read_mem_16(addr.wrapping_add(2))?))
+            }
+            MemOperand::Register(_) => unimplemented!()
         }
     }
 
