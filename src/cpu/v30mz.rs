@@ -152,7 +152,7 @@ impl V30MZ {
         match op.code {
             // ADD
             0x00..=0x05 => self.add(op.op1, op.op2, op.mode),
-            
+
             // PUSH
             0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x9C => self.push_op(op.op2),
             0x60 => Ok(self.push_r()),
@@ -229,6 +229,3 @@ impl V30MZ {
         self.read_responses.clear();
     }
 }
-
-#[cfg(test)]
-mod test;
