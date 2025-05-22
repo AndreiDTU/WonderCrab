@@ -104,14 +104,12 @@ impl V30MZ {
             self.expect_op_bytes(2)?;
             let byte = self.current_op[1];
             self.resolve_mem_operand(byte, mode)?;
-            let imm_addr = self.get_pc_address();
             
             if mode == Mode::M8 {
-                let src = self.read_mem(imm_addr)?;
+                let src = self.expect_extra_byte();
                 self.write_mem_operand_8(src)?;
             } else {
-                let src = self.read_mem_16(imm_addr)?;
-                self.PC = self.PC.wrapping_add(1);
+                let src = self.expect_extra_word();
                 self.write_mem_operand_16(src)?;
             }
             return Ok(());
@@ -150,7 +148,7 @@ impl V30MZ {
         Ok(())
     }
 
-    pub fn ldea(&mut self, mode: Mode) -> Result<(), ()> {
+    pub fn ldea(&mut self) -> Result<(), ()> {
         // Calculates the offset of a memory operand and stores
         // the result into a 16-bit register.
 
@@ -158,24 +156,12 @@ impl V30MZ {
         self.expect_op_bytes(2)?;
 
         let byte = self.current_op[1];
-        let address = match self.resolve_mem_operand(byte, mode) {
-            Err(_) => return Err(()),
-            Ok((op, _)) => {
-                op
-            }
-        };
+        let (address, _) = self.resolve_mem_operand(byte, Mode::M16)?;
 
         match address {
             MemOperand::Offset(offset) => self.AW = offset,
             MemOperand::Register(RegisterType::RW(r)) => self.AW = *r,
-            MemOperand::Register(RegisterType::RH(rh)) => {
-                let AH = *rh as u8;
-                self.AW = swap_h(self.AW, AH);
-            }
-            MemOperand::Register(RegisterType::RL(rl)) => {
-                let AL = *rl as u8;
-                self.AW = swap_l(self.AW, AL);
-            }
+            _ => unreachable!(),
         }
 
         Ok(())
@@ -453,12 +439,15 @@ mod test {
         soc.get_cpu().IX = 0x1111;
 
         soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
 
         soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0006);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
 
         soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0009);
         assert_eq_hex!(soc.get_cpu().AW, 0x679A);
 
         soc.tick();
@@ -643,31 +632,6 @@ mod test {
     }
 
     #[test]
-    fn test_0xc6_mov_imm_to_mem_8() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![
-            0xC6, 0x06, 0x00, 0x01, 0xAB, // WRAM[0x0100] <- 0xAB
-        ]);
-
-        soc.tick();
-        assert_eq_hex!(soc.get_cpu().PC, 0x0005);
-        assert_eq_hex!(soc.get_wram()[0x0100], 0xAB);
-    }
-
-    #[test]
-    fn test_0xc7_mov_imm_to_mem_16() {
-        let mut soc = SoC::new();
-        soc.set_wram(vec![
-            0xC7, 0x06, 0x00, 0x01, 0x34, 0x12, // WRAM[0x0100] <- 0x1234
-        ]);
-
-        soc.tick();
-        assert_eq_hex!(soc.get_cpu().PC, 0x0006);
-        assert_eq_hex!(soc.get_wram()[0x0100], 0x34);
-        assert_eq_hex!(soc.get_wram()[0x0101], 0x12);
-    }
-
-    #[test]
     fn test_0xc4_mov_mem_to_ds1_reg() {
         let mut soc = SoC::new();
         soc.set_wram(vec![
@@ -699,6 +663,31 @@ mod test {
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
         assert_eq_hex!(soc.get_cpu().DS0, 0x5678);
+    }
+
+    #[test]
+    fn test_0xc6_mov_imm_to_mem_8() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0xC6, 0x06, 0x00, 0x01, 0xAB, // WRAM[0x0100] <- 0xAB
+        ]);
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0005);
+        assert_eq_hex!(soc.get_wram()[0x0100], 0xAB);
+    }
+
+    #[test]
+    fn test_0xc7_mov_imm_to_mem_16() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0xC7, 0x06, 0x00, 0x01, 0x34, 0x12, // WRAM[0x0100] <- 0x1234
+        ]);
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0006);
+        assert_eq_hex!(soc.get_wram()[0x0100], 0x34);
+        assert_eq_hex!(soc.get_wram()[0x0101], 0x12);
     }
 
     #[test]

@@ -1,8 +1,22 @@
+use std::cmp::max;
+
 use crate::cpu::parity;
 
 use super::*;
 
 impl V30MZ {
+    pub fn expect_extra_byte(&mut self) -> u8 {
+        let imm = self.get_pc_address().wrapping_add(self.pc_displacement as u32) as usize;
+        self.pc_displacement += 1;
+        self.current_op[imm]
+    }
+
+    pub fn expect_extra_word(&mut self) -> u16 {
+        let imm = self.get_pc_address().wrapping_add(self.pc_displacement as u32) as usize;
+        self.pc_displacement += 2;
+        u16::from_le_bytes([self.current_op[imm], self.current_op[imm + 1]])
+    }
+
     pub fn update_flags_8(&mut self, a: u16, b: u16, res: u16) {
         let sign = res & 0x80;
 
@@ -319,8 +333,7 @@ impl V30MZ {
         // When a is 0 and m is 6, the operand's memory offset is not given by an expression.
         // Instead, the literal 16-bit offset is present as two additional bytes of program code (low byte first).
         if a == 0 && m == 6 {
-            self.op_request = self.current_op.len() < 4;
-            if self.op_request {return Err(())};
+            self.expect_op_bytes(4)?;
 
             let offset = u16::from_le_bytes([self.current_op[2], self.current_op[3]]);
             return Ok((MemOperand::Offset(offset), segment));
@@ -345,14 +358,12 @@ impl V30MZ {
         let displacement = match a {
             0 => 0,
             1 => {
-                self.op_request = self.current_op.len() < 3;
-                if self.op_request {return Err(())}
+                self.expect_op_bytes(3)?;
 
                 ((self.current_op[2] as i8) as i16) as u16
             }
             2 => {
-                self.op_request = self.current_op.len() < 4;
-                if self.op_request {return Err(())};
+                self.expect_op_bytes(4)?;
 
                 u16::from_le_bytes([self.current_op[2], self.current_op[3]])
             }
@@ -374,8 +385,12 @@ impl V30MZ {
 
     // Returns Err if the current_op is shorter than the amount of bytes
     pub fn expect_op_bytes(&mut self, bytes: usize) -> Result<(), ()> {
+        self.pc_displacement = max(self.pc_displacement, bytes as u16);
+
         self.op_request = self.current_op.len() < bytes;
-        if self.op_request {return Err(())} else {Ok(())}
+        if self.op_request {return Err(());}
+        
+        Ok(())
     }
 
     pub fn get_physical_address(&self, offset: u16, default_segment: u16) -> u32 {

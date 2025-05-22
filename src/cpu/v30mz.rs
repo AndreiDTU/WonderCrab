@@ -59,6 +59,7 @@ pub struct V30MZ {
     BP: u16, // BASE POINTER
 
     PC: u16, // PROGRAM COUNTER
+    pc_displacement: u16,
 
     PSW: CpuStatus, // PROGRAM STATUS WORD
 
@@ -126,11 +127,11 @@ impl V30MZ {
             DS0: 0, DS1: 0, PS: 0, SS: 0,
             IX: 0, IY: 0,
             SP: 0, BP: 0, 
-            PC: 0,
+            PC: 0, pc_displacement: 0,
             
             PSW: CpuStatus::from_bits_truncate(0),
 
-            current_op: Vec::with_capacity(5), op_request: false,
+            current_op: Vec::with_capacity(8), op_request: false,
             segment_override: None, read_requests: Vec::new(), read_responses: HashMap::new(), write_requests: HashMap::new(),
 
             io_responses: HashMap::with_capacity(2), io_read_requests: Vec::with_capacity(2), io_write_requests: HashMap::with_capacity(2),
@@ -144,6 +145,8 @@ impl V30MZ {
 
     pub fn execute(&mut self) -> Result<(), ()> {
         // CPU requires at least one byte of instruction code to execute
+        self.op_request = self.current_op.len() == 0;
+        if self.op_request {return Err(());}
         self.expect_op_bytes(1)?;
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
@@ -189,7 +192,7 @@ impl V30MZ {
             0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(op),
 
             // LDEA
-            0x8D => self.ldea(op.mode),
+            0x8D => self.ldea(),
 
             // CVTBW
             0x98 => self.cvtbw(),
@@ -217,9 +220,7 @@ impl V30MZ {
     }
 
     pub fn get_pc_address(&mut self) -> u32 {
-        let addr = self.apply_segment(self.PC, self.PS);
-        self.PC = self.PC.wrapping_add(1);
-        addr
+        self.apply_segment(self.PC, self.PS)
     }
 
     fn finish_op(&mut self) {
@@ -227,5 +228,7 @@ impl V30MZ {
         self.io_responses.clear();
         self.read_requests.clear();
         self.read_responses.clear();
+        self.PC = self.PC.wrapping_add(self.pc_displacement);
+        self.pc_displacement = 0;
     }
 }

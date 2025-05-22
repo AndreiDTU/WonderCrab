@@ -113,9 +113,11 @@ impl SoC {
         loop {
             // Supply program bytes
             if self.cpu.op_request {
-                let addr = self.cpu.get_pc_address();
-                let byte = self.read_mem(addr).unwrap();
-                self.cpu.current_op.push(byte);
+                let pc = self.cpu.get_pc_address();
+                for addr in pc..pc.wrapping_add(8) {
+                    let byte = self.read_mem(addr).unwrap();
+                    self.cpu.current_op.push(byte);
+                }
                 let _ = self.cpu.execute();
                 continue;
             }

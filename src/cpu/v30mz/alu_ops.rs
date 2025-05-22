@@ -33,9 +33,7 @@ impl V30MZ {
     pub fn add_s(&mut self) -> Result<(), ()> {
         self.expect_op_bytes(2)?;
         let old_dest = self.resolve_mem_src_16(self.current_op[2])? as u32;
-        let imm_idx = self.current_op.len();
-        self.expect_op_bytes(imm_idx + 1)?;
-        let src = self.current_op[imm_idx] as u32;
+        let src = self.expect_extra_byte() as u32;
         
         let result = old_dest.wrapping_add(src);
 
@@ -43,6 +41,7 @@ impl V30MZ {
 
         self.write_src_to_dest_16(Operand::MEMORY, result as u16)
     }
+    
     pub fn addc(&mut self, op1: Operand, op2: Operand, mode: Mode) -> Result<(), ()> {
         // Adds the two operands, plus 1 more if the carry flag (CY) was set.
         // The result is stored in the left operand. 
@@ -74,9 +73,7 @@ impl V30MZ {
     pub fn addc_s(&mut self) -> Result<(), ()> {
         self.expect_op_bytes(2)?;
         let old_dest = self.resolve_mem_src_16(self.current_op[2])? as u32;
-        let imm_idx = self.current_op.len();
-        self.expect_op_bytes(imm_idx + 1)?;
-        let src = self.current_op[imm_idx] as u32;
+        let src = self.expect_extra_byte() as u32;
         
         let result = old_dest.wrapping_add(src).wrapping_add(1);
 
