@@ -65,3 +65,10 @@ fn swap_h(dest: u16, src: u8) -> u16 {
 fn swap_l(dest: u16, src: u8) -> u16 {
     (dest & 0xFF00) | (src as u16)
 }
+pub fn parity(x: u8) -> bool {
+    let mut parity = 0;
+    for i in 0..8 {
+        parity += (x >> i) & 1;
+    }
+    parity % 2 == 0
+}

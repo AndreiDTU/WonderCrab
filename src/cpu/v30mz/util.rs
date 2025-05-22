@@ -1,6 +1,30 @@
+use crate::cpu::parity;
+
 use super::*;
 
 impl V30MZ {
+    pub fn update_flags_8(&mut self, a: u16, b: u16, res: u16) {
+        let sign = res & 0x80;
+
+        self.PSW.set(CpuStatus::ZERO, res as u8 == 0);
+        self.PSW.set(CpuStatus::SIGN, sign != 0);
+        self.PSW.set(CpuStatus::OVERFLOW, sign != a & 0x80 && sign != b & 0x80);
+        self.PSW.set(CpuStatus::CARRY, res > 0xFF);
+        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+        self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) > 0xF);
+    }
+
+    pub fn update_flags_16(&mut self, a: u32, b: u32, res: u32) {
+        let sign = res & 0x8000;
+
+        self.PSW.set(CpuStatus::ZERO, res as u16 == 0);
+        self.PSW.set(CpuStatus::SIGN, sign != 0);
+        self.PSW.set(CpuStatus::OVERFLOW, sign != a & 0x8000 && sign != b & 0x8000);
+        self.PSW.set(CpuStatus::CARRY, res > 0xFFFF);
+        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+        self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) > 0xF);
+    }
+
     pub fn push(&mut self, src: u16) {
         self.SP = self.SP.wrapping_sub(2);
         let addr = self.get_stack_address();

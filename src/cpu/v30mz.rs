@@ -8,6 +8,7 @@ use super::{opcode::{OpCode, CPU_OP_CODES}, swap_h, swap_l, MemOperand, Mode, Op
 
 mod util;
 mod mem_ops;
+mod alu_ops;
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
@@ -149,6 +150,9 @@ impl V30MZ {
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
+            // ADD
+            0x00..=0x05 => self.add(op.op1, op.op2, op.mode),
+            
             // PUSH
             0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x9C => self.push_op(op.op2),
             0x60 => Ok(self.push_r()),
@@ -157,6 +161,15 @@ impl V30MZ {
             // POP
             0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op1),
             0x61 => self.pop_r(),
+
+            // ADDC
+            0x10..=0x15 => self.addc(op.op1, op.op2, op.mode),
+
+            // ADJ4A
+            0x27 => Ok(self.adj4a()),
+
+            // ADJ4S
+            0x2F => Ok(self.adj4s()),
 
             // XCH
             0x86 | 0x87 | 0x91..=0x97 => self.xch(op.mode, op.op1, op.op2),
