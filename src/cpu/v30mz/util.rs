@@ -388,7 +388,11 @@ impl V30MZ {
         self.pc_displacement = max(self.pc_displacement, bytes as u16);
 
         self.op_request = self.current_op.len() < bytes;
-        if self.op_request {return Err(());}
+        if self.op_request {
+            self.PC = self.PC.wrapping_add(self.pc_displacement);
+            self.pc_displacement = 0;
+            return Err(());
+        }
         
         Ok(())
     }

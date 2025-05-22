@@ -50,7 +50,9 @@ impl V30MZ {
                 let old_dest = self.resolve_src_8(op1)? as u16;
                 let src = self.resolve_src_8(op2)? as u16;
 
-                let result = old_dest.wrapping_add(src).wrapping_add(1);
+                let carry = self.PSW.contains(CpuStatus::CARRY) as u16;
+
+                let result = old_dest.wrapping_add(src).wrapping_add(carry);
 
                 self.update_flags_8(old_dest, src, result);
 
@@ -60,7 +62,9 @@ impl V30MZ {
                 let old_dest = self.resolve_src_16(op1)? as u32;
                 let src = self.resolve_src_16(op2)? as u32;
 
-                let result = old_dest.wrapping_add(src);
+                let carry = self.PSW.contains(CpuStatus::CARRY) as u32;
+
+                let result = old_dest.wrapping_add(src).wrapping_add(carry);
 
                 self.update_flags_16(old_dest, src, result);
 
@@ -74,8 +78,10 @@ impl V30MZ {
         self.expect_op_bytes(2)?;
         let old_dest = self.resolve_mem_src_16(self.current_op[2])? as u32;
         let src = self.expect_extra_byte() as u32;
-        
-        let result = old_dest.wrapping_add(src).wrapping_add(1);
+
+        let carry = self.PSW.contains(CpuStatus::CARRY) as u32;
+
+        let result = old_dest.wrapping_add(src).wrapping_add(carry);
 
         self.update_flags_16(old_dest, src, result);
 
@@ -224,5 +230,109 @@ mod test {
         assert!(!soc.get_cpu().PSW.contains(CpuStatus::SIGN));
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY));
         assert!(!soc.get_cpu().PSW.contains(CpuStatus::OVERFLOW));
+    }
+
+    #[test]
+    fn test_0x10_addc_register_to_memory_8() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0x10, 0x06, 0xFE, 0x00, // [0x00FE] <- [0x00FE] + AL + carry
+        ]);
+        soc.get_cpu().AW = 0x1234;
+        soc.get_cpu().PSW.insert(CpuStatus::CARRY);
+        soc.get_wram()[0x00FE] = 0x01;
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+        assert_eq_hex!(soc.get_wram()[0x00FE], 0x36);
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::PARITY));
+    }
+
+    #[test]
+    fn test_0x11_addc_register_to_memory_16() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0x11, 0x06, 0xFE, 0x00, // [0x00FE] <- [0x00FE] + AW + carry
+        ]);
+        soc.get_cpu().AW = 0x1234;
+        soc.get_cpu().PSW.insert(CpuStatus::CARRY);
+        soc.get_wram()[0x00FE] = 0xFF;
+        soc.get_wram()[0x00FF] = 0x01;
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+        assert_eq_hex!(soc.get_wram()[0x00FE], 0x34);
+        assert_eq_hex!(soc.get_wram()[0x00FF], 0x14);
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
+        assert!(!soc.get_cpu().PSW.contains(CpuStatus::PARITY));
+    }
+
+    #[test]
+    fn test_0x12_addc_memory_to_register_8() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0x12, 0x06, 0xFE, 0x00,
+        ]);
+        soc.get_cpu().AW = 0x1234;
+        soc.get_cpu().PSW.insert(CpuStatus::CARRY);
+        soc.get_wram()[0x00FE] = 0x01;
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+        assert_eq_hex!(soc.get_cpu().AW, 0x1236);
+        assert!(!soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::PARITY));
+    }
+
+    #[test]
+    fn test_0x13_addc_memory_to_register_16() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0x13, 0x06, 0xFE, 0x00,
+        ]);
+        soc.get_cpu().AW = 0x1234;
+        soc.get_cpu().PSW.insert(CpuStatus::CARRY);
+        soc.get_wram()[0x00FE] = 0xFF;
+        soc.get_wram()[0x00FF] = 0x01;
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+        assert_eq_hex!(soc.get_cpu().AW, 0x1434);
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
+        assert!(!soc.get_cpu().PSW.contains(CpuStatus::PARITY));
+    }
+
+    #[test]
+    fn test_0x14_addc_immediate_to_accumulator_8() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0x14, 0xFF,
+        ]);
+        soc.get_cpu().AW = 0x12FF;
+        soc.get_cpu().PSW.insert(CpuStatus::CARRY);
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0002);
+        assert_eq_hex!(soc.get_cpu().AW, 0x12FF); // 0xFF + 0xFF + 1 = 0x1FF
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY));
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::SIGN));
+    }
+
+    #[test]
+    fn test_0x15_addc_immediate_to_accumulator_16() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0x15, 0xFF, 0xFF
+        ]);
+        soc.get_cpu().AW = 0x12FF;
+        soc.get_cpu().PSW.insert(CpuStatus::CARRY);
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0003);
+        assert_eq_hex!(soc.get_cpu().AW, 0x12FF); // 0x12FF + 0xFFFF + 1 = 0x12FF
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY));
+        assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
+        assert!(!soc.get_cpu().PSW.contains(CpuStatus::SIGN));
     }
 }

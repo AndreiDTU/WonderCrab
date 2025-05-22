@@ -4,7 +4,7 @@ use bitflags::bitflags;
 
 use crate::soc::{IOBus, MemBus};
 
-use super::{opcode::{OpCode, CPU_OP_CODES}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
+use super::{opcode::{OpCode, CPU_OP_CODES, IMMEDIATE_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
 mod util;
 mod mem_ops;
@@ -99,6 +99,7 @@ impl MemBus for V30MZ {
 
     fn write_mem(&mut self, addr: u32, data: u8) {
         self.write_requests.insert(addr, data);
+        self.read_responses.remove(&addr);
     }
 }
 
@@ -174,6 +175,19 @@ impl V30MZ {
             // ADJ4S
             0x2F => Ok(self.adj4s()),
 
+            // Immediate Group
+            0x80..=0x83 => {
+                self.expect_op_bytes(1)?;
+                let sub_op = &IMMEDIATE_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
+                match (op.code, sub_op.code) {
+                    (0x82, 0) => self.add_s(),
+                    (0x82, 2) => self.addc_s(),
+                    (_, 0) => self.add(op.op1, op.op2, op.mode),
+                    (_, 2) => self.addc(op.op1, op.op2, op.mode),
+                    _ => todo!()
+                }
+            }
+
             // XCH
             0x86 | 0x87 | 0x91..=0x97 => self.xch(op.mode, op.op1, op.op2),
 
@@ -227,7 +241,6 @@ impl V30MZ {
         self.current_op.clear();
         self.io_responses.clear();
         self.read_requests.clear();
-        self.read_responses.clear();
         self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
     }
