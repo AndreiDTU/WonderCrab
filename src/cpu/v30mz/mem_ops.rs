@@ -32,6 +32,14 @@ impl V30MZ {
         Ok(())
     }
 
+    pub fn push_s(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let src = self.current_op[1] as u16;
+        self.push(src);
+
+        Ok(())
+    }
+
     pub fn push_r(&mut self) {
         let temp = self.SP;
         self.push(self.AW);
@@ -209,7 +217,7 @@ impl V30MZ {
 
     pub fn trans(&mut self) -> Result<(), ()> {
         // Calculates a memory offset as the unsigned sum of BW and AL,
-        // and loads the byte at that offset into AL. 
+        // and loads the byte at that offset into AL.
         let offset = self.BW.wrapping_add(self.AW & 0b0000_1111);
         let addr = self.get_physical_address(offset, self.DS0);
         self.AW = swap_l(self.AW, self.read_mem(addr)?);
@@ -257,4 +265,37 @@ impl V30MZ {
         Ok(())
     }
     
+    pub fn xch(&mut self, mode: Mode, op1: Operand, op2: Operand) -> Result<(), ()> {
+        // Exchanges the values stored in the operands. 
+
+        match mode {
+            Mode::M8 => {
+                let src1 = self.resolve_src_8(op1)?;
+                let src2 = self.resolve_src_8(op2)?;
+                self.write_src_to_dest_8(op1, src2)?;
+                self.write_src_to_dest_8(op2, src1)?;
+            }
+            Mode::M16 => {
+                match op2 {
+                    Operand::MEMORY => {
+                        let src1 = self.resolve_src_16(op1)?;
+                        let src2 = self.resolve_src_16(op2)?;
+                        self.write_src_to_dest_16(op1, src2)?;
+                        self.write_src_to_dest_16(op2, src1)?;
+                    }
+                    _ => {
+                        let src1 = self.AW;
+                        let bits = (self.current_op[0] & 0b0011_1000) >> 3;
+                        let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
+                        let src2 = *r;
+                        *r = src1;
+                        self.AW = src2;
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
 }
