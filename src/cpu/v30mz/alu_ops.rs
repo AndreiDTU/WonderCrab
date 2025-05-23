@@ -12,7 +12,7 @@ impl V30MZ {
 
                 let result = old_dest.wrapping_add(src);
 
-                self.update_flags_8(old_dest, src, result);
+                self.update_flags_add_8(old_dest, src, result);
 
                 self.write_src_to_dest_8(op1, result as u8)
             }
@@ -22,7 +22,7 @@ impl V30MZ {
 
                 let result = old_dest.wrapping_add(src);
 
-                self.update_flags_16(old_dest, src, result);
+                self.update_flags_add_16(old_dest, src, result);
 
                 self.write_src_to_dest_16(op1, result as u16)
             }
@@ -31,13 +31,13 @@ impl V30MZ {
     }
 
     pub fn add_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
+        self.expect_op_bytes(3)?;
         let old_dest = self.resolve_mem_src_16(self.current_op[2])? as u32;
         let src = self.expect_extra_byte() as u32;
         
         let result = old_dest.wrapping_add(src);
 
-        self.update_flags_16(old_dest, src, result);
+        self.update_flags_add_16(old_dest, src, result);
 
         self.write_src_to_dest_16(Operand::MEMORY, result as u16)
     }
@@ -54,7 +54,7 @@ impl V30MZ {
 
                 let result = old_dest.wrapping_add(src).wrapping_add(carry);
 
-                self.update_flags_8(old_dest, src, result);
+                self.update_flags_add_8(old_dest, src, result);
 
                 self.write_src_to_dest_8(op1, result as u8)
             }
@@ -66,7 +66,7 @@ impl V30MZ {
 
                 let result = old_dest.wrapping_add(src).wrapping_add(carry);
 
-                self.update_flags_16(old_dest, src, result);
+                self.update_flags_add_16(old_dest, src, result);
 
                 self.write_src_to_dest_16(op1, result as u16)
             }
@@ -75,7 +75,7 @@ impl V30MZ {
     }
 
     pub fn addc_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
+        self.expect_op_bytes(3)?;
         let old_dest = self.resolve_mem_src_16(self.current_op[2])? as u32;
         let src = self.expect_extra_byte() as u32;
 
@@ -83,7 +83,7 @@ impl V30MZ {
 
         let result = old_dest.wrapping_add(src).wrapping_add(carry);
 
-        self.update_flags_16(old_dest, src, result);
+        self.update_flags_add_16(old_dest, src, result);
 
         self.write_src_to_dest_16(Operand::MEMORY, result as u16)
     }
@@ -104,6 +104,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::ZERO, AL == 0);
         self.PSW.set(CpuStatus::SIGN, AL & 0x80 != 0);
         self.PSW.set(CpuStatus::PARITY, parity(AL));
+        self.AW = swap_l(self.AW, AL);
     }
 
     pub fn adj4s(&mut self) {
@@ -122,6 +123,195 @@ impl V30MZ {
         self.PSW.set(CpuStatus::ZERO, AL == 0);
         self.PSW.set(CpuStatus::SIGN, AL & 0x80 != 0);
         self.PSW.set(CpuStatus::PARITY, parity(AL));
+        self.AW = swap_l(self.AW, AL);
+    }
+
+    pub fn adjba(&mut self) {
+        let mut AL = self.AW as u8;
+        if AL & 0x0F > 0x0F || self.PSW.contains(CpuStatus::AUX_CARRY) {
+            AL = AL.wrapping_add(0x06) & 0x0F;
+            self.AW = self.AW.wrapping_add(0x0100);
+            self.AW = swap_l(self.AW, AL);
+            self.PSW.insert(CpuStatus::AUX_CARRY);
+            self.PSW.insert(CpuStatus::CARRY);
+            self.PSW.remove(CpuStatus::SIGN);
+            self.PSW.insert(CpuStatus::ZERO);
+        } else {
+            AL &= 0x0F;
+            self.PSW.remove(CpuStatus::AUX_CARRY);
+            self.PSW.remove(CpuStatus::CARRY);
+            self.PSW.insert(CpuStatus::SIGN);
+            self.PSW.remove(CpuStatus::ZERO);
+        }
+        self.PSW.remove(CpuStatus::OVERFLOW);
+        self.PSW.insert(CpuStatus::PARITY);
+        self.AW = swap_l(self.AW, AL);
+    }
+
+    pub fn adjbs(&mut self) {
+        let mut AL = self.AW as u8;
+        if AL & 0x0F > 0x0F || self.PSW.contains(CpuStatus::AUX_CARRY) {
+            AL = AL.wrapping_sub(0x06) & 0x0F;
+            self.AW = swap_h(self.AW, ((self.AW >> 8) as u8).wrapping_sub(1));
+            self.AW = swap_l(self.AW, AL);
+            self.PSW.insert(CpuStatus::AUX_CARRY);
+            self.PSW.insert(CpuStatus::CARRY);
+            self.PSW.remove(CpuStatus::SIGN);
+            self.PSW.insert(CpuStatus::ZERO);
+        } else {
+            AL &= 0x0F;
+            self.PSW.remove(CpuStatus::AUX_CARRY);
+            self.PSW.remove(CpuStatus::CARRY);
+            self.PSW.insert(CpuStatus::SIGN);
+            self.PSW.remove(CpuStatus::ZERO);
+        }
+        self.PSW.remove(CpuStatus::OVERFLOW);
+        self.PSW.insert(CpuStatus::PARITY);
+        self.AW = swap_l(self.AW, AL);
+    }
+
+    pub fn cmp(&mut self, op1: Operand, op2: Operand, mode: Mode) -> Result<(), ()> {
+        match mode {
+            Mode::M8 => {
+                let old_dest = self.resolve_src_8(op1)?;
+                let src = self.resolve_src_8(op2)?;
+
+                let result = old_dest.wrapping_sub(src);
+
+                self.update_flags_sub_8(old_dest, src, result);
+            }
+            Mode::M16 => {
+                let old_dest = self.resolve_src_16(op1)?;
+                let src = self.resolve_src_16(op2)?;
+
+                let result = old_dest.wrapping_sub(src);
+
+                self.update_flags_sub_16(old_dest, src, result);
+            }
+            Mode::M32 => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    pub fn cmp_s(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(3)?;
+        let old_dest = self.resolve_mem_src_16(self.current_op[1])?;
+        let src = self.current_op[2] as u16;
+
+        let result = old_dest.wrapping_sub(src);
+
+        self.update_flags_sub_16(old_dest, src, result);
+        Ok(())
+    }
+
+    pub fn cvtbd(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let src = self.current_op[1];
+        if src == 0 {
+            return self.raise_exception(0);
+        }
+        let (AL, AH) = (self.AW as u8 / src, self.AW as u8 % src);
+        self.PSW.set(CpuStatus::ZERO, AL == 0);
+        self.PSW.set(CpuStatus::SIGN, AL & 0x80 != 0);
+        self.PSW.set(CpuStatus::PARITY, parity(AL));
+        self.AW = swap_h(self.AW, AH);
+        self.AW = swap_l(self.AW, AL);
+
+        Ok(())
+    }
+
+    pub fn cvtdb(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let src = self.current_op[1] as u16;
+
+        let (AH, AL) = ((self.AW >> 8) as u8, self.AW as u8);
+
+        let result = AH as u16 * src + AL as u16;
+
+        self.AW = swap_l(self.AW, result as u8);
+        self.AW &= 0xFF;
+        self.update_flags_add_8(AL as u16, AH as u16, result);
+
+        Ok(())
+    }
+
+    pub fn sub(&mut self, op1: Operand, op2: Operand, mode: Mode) -> Result<(), ()> {
+        // Subtracts the two operands. The result is stored in the left operand.
+        match mode {
+            Mode::M8 => {
+                let old_dest = self.resolve_src_8(op1)?;
+                let src = self.resolve_src_8(op2)?;
+
+                let result = old_dest.wrapping_sub(src);
+
+                self.update_flags_sub_8(old_dest, src, result);
+                self.write_src_to_dest_8(op1, result)
+            }
+            Mode::M16 => {
+                let old_dest = self.resolve_src_16(op1)?;
+                let src = self.resolve_src_16(op2)?;
+
+                let result = old_dest.wrapping_sub(src);
+
+                self.update_flags_sub_16(old_dest, src, result);
+                self.write_src_to_dest_16(op1, result)
+            }
+            Mode::M32 => unreachable!(),
+        }
+    }
+
+    pub fn sub_s(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(3)?;
+        let old_dest = self.resolve_mem_src_16(self.current_op[1])?;
+        let src = self.current_op[2] as u16;
+
+        let result = old_dest.wrapping_sub(src);
+
+        self.update_flags_sub_16(old_dest, src, result);
+        self.write_mem_operand_16(src)
+    }
+
+    pub fn subc(&mut self, op1: Operand, op2: Operand, mode: Mode) -> Result<(), ()> {
+        // Subtracts the two operands. The result is stored in the left operand.
+        match mode {
+            Mode::M8 => {
+                let old_dest = self.resolve_src_8(op1)?;
+                let src = self.resolve_src_8(op2)?;
+
+                let carry = self.PSW.contains(CpuStatus::CARRY) as u8;
+
+                let result = old_dest.wrapping_sub(src).wrapping_add(carry);
+
+                self.update_flags_sub_8(old_dest, src, result);
+                self.write_src_to_dest_8(op1, result)
+            }
+            Mode::M16 => {
+                let old_dest = self.resolve_src_16(op1)?;
+                let src = self.resolve_src_16(op2)?;
+
+                let carry = self.PSW.contains(CpuStatus::CARRY) as u16;
+
+                let result = old_dest.wrapping_sub(src).wrapping_add(carry);
+
+                self.update_flags_sub_16(old_dest, src, result);
+                self.write_src_to_dest_16(op1, result)
+            }
+            Mode::M32 => unreachable!(),
+        }
+    }
+
+    pub fn subc_s(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(3)?;
+        let old_dest = self.resolve_mem_src_16(self.current_op[1])?;
+        let src = self.current_op[2] as u16;
+
+        let carry = self.PSW.contains(CpuStatus::CARRY) as u16;
+
+        let result = old_dest.wrapping_sub(src).wrapping_add(carry);
+
+        self.update_flags_sub_16(old_dest, src, result);
+        self.write_mem_operand_16(src)
     }
 }
 

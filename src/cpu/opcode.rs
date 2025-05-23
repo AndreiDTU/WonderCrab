@@ -342,6 +342,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
     ]
 });
 
+// 0x80 - 0x83
 pub static IMMEDIATE_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "ADD" ),
@@ -355,6 +356,7 @@ pub static IMMEDIATE_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     ]
 });
 
+// 0xC0, 0xC1, 0xD0 - 0xD3
 pub static SHIFT_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "ROL" ),
@@ -368,6 +370,7 @@ pub static SHIFT_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     ]
 });
 
+// 0xF6, 0xF7
 pub static GROUP_1: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "TEST"),
@@ -381,6 +384,7 @@ pub static GROUP_1: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     ]
 });
 
+// 0xFE, 0xFF
 pub static GROUP_2: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "INC"),

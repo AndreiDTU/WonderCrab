@@ -17,7 +17,31 @@ impl V30MZ {
         u16::from_le_bytes([self.current_op[imm], self.current_op[imm + 1]])
     }
 
-    pub fn update_flags_8(&mut self, a: u16, b: u16, res: u16) {
+    pub fn update_flags_sub_8(&mut self, a: u8, b: u8, res: u8) {
+        let old_sign = a & 0x80;
+        let new_sign = res & 0x80;
+
+        self.PSW.set(CpuStatus::ZERO, res == 0);
+        self.PSW.set(CpuStatus::SIGN, new_sign != 0);
+        self.PSW.set(CpuStatus::OVERFLOW, old_sign != b & 0x80 && old_sign != new_sign);
+        self.PSW.set(CpuStatus::CARRY, a < b);
+        self.PSW.set(CpuStatus::PARITY, parity(res));
+        self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F);
+    }
+
+    pub fn update_flags_sub_16(&mut self, a: u16, b: u16, res: u16) {
+        let old_sign = a & 0x8000;
+        let new_sign = res & 0x8000;
+
+        self.PSW.set(CpuStatus::ZERO, res == 0);
+        self.PSW.set(CpuStatus::SIGN, new_sign != 0);
+        self.PSW.set(CpuStatus::OVERFLOW, old_sign != b & 0x8000 && old_sign != new_sign);
+        self.PSW.set(CpuStatus::CARRY, a < b);
+        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+        self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F);
+    }
+
+    pub fn update_flags_add_8(&mut self, a: u16, b: u16, res: u16) {
         let sign = res & 0x80;
 
         self.PSW.set(CpuStatus::ZERO, res as u8 == 0);
@@ -28,7 +52,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) > 0xF);
     }
 
-    pub fn update_flags_16(&mut self, a: u32, b: u32, res: u32) {
+    pub fn update_flags_add_16(&mut self, a: u32, b: u32, res: u32) {
         let sign = res & 0x8000;
 
         self.PSW.set(CpuStatus::ZERO, res as u16 == 0);

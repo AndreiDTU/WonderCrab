@@ -4,7 +4,7 @@ use bitflags::bitflags;
 
 use crate::soc::{IOBus, MemBus};
 
-use super::{opcode::{OpCode, CPU_OP_CODES, IMMEDIATE_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
+use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_2, IMMEDIATE_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
 mod util;
 mod mem_ops;
@@ -130,7 +130,7 @@ impl V30MZ {
             SP: 0, BP: 0, 
             PC: 0, pc_displacement: 0,
             
-            PSW: CpuStatus::from_bits_truncate(0),
+            PSW: CpuStatus::from_bits_truncate(0xF022),
 
             current_op: Vec::with_capacity(8), op_request: false,
             segment_override: None, read_requests: Vec::new(), read_responses: HashMap::new(), write_requests: HashMap::new(),
@@ -169,21 +169,42 @@ impl V30MZ {
             // ADDC
             0x10..=0x15 => self.addc(op.op1, op.op2, op.mode),
 
+            // SUBC
+            0x18..=0x1D => self.subc(op.op1, op.op2, op.mode),
+
             // ADJ4A
             0x27 => Ok(self.adj4a()),
+
+            // SUB
+            0x28..=0x2D => self.sub(op.op1, op.op2, op.mode),
 
             // ADJ4S
             0x2F => Ok(self.adj4s()),
 
+            // ADJBA
+            0x37 => Ok(self.adjba()),
+
+            // CMP
+            0x38..=0x3D => self.cmp(op.op1, op.op2, op.mode),
+
+            // ADJBS
+            0x3F => Ok(self.adjbs()),
+
             // Immediate Group
             0x80..=0x83 => {
-                self.expect_op_bytes(1)?;
+                self.expect_op_bytes(2)?;
                 let sub_op = &IMMEDIATE_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 match (op.code, sub_op.code) {
                     (0x82, 0) => self.add_s(),
                     (0x82, 2) => self.addc_s(),
+                    (0x82, 3) => self.subc_s(),
+                    (0x82, 5) => self.sub_s(),
+                    (0x82, 7) => self.cmp_s(),
                     (_, 0) => self.add(op.op1, op.op2, op.mode),
                     (_, 2) => self.addc(op.op1, op.op2, op.mode),
+                    (_, 3) => self.subc(op.op1, op.op2, op.mode),
+                    (_, 5) => self.sub(op.op1, op.op2, op.mode),
+                    (_, 7) => self.cmp(op.op1, op.op2, op.mode),
                     _ => todo!()
                 }
             }
@@ -225,6 +246,16 @@ impl V30MZ {
 
             // OUT
             0xE6 | 0xE7 | 0xEE | 0xEF => self.out_op(op.mode, op.op2),
+
+            // Group 2
+            0xFE | 0xFF => {
+                self.expect_op_bytes(2)?;
+                let sub_op = &GROUP_2[(self.current_op[1] & 0b0011_1000) as usize >> 3];
+                match (op.code, sub_op.code) {
+                    (_, 6) => self.push_op(Operand::MEMORY),
+                    _ => todo!()
+                }
+            }
                 
             _ => todo!(),
         }?;
@@ -243,5 +274,18 @@ impl V30MZ {
         self.read_requests.clear();
         self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
+    }
+
+    fn raise_exception(&mut self, vector: u8) -> Result<(), ()> {
+        self.PC = self.PC.wrapping_add(self.pc_displacement);
+
+        self.push(self.PSW.bits());
+        self.PSW.remove(CpuStatus::INTERRUPT);
+        self.PSW.remove(CpuStatus::BREAK);
+        self.push(self.PS);
+        self.push(self.PC);
+
+        (self.PS, self.PC) = self.read_mem_32(vector as u32)?;
+        Ok(())
     }
 }
