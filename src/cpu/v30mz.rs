@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, rc::Rc};
 
 use bitflags::bitflags;
 
@@ -63,66 +63,47 @@ pub struct V30MZ {
 
     PSW: CpuStatus, // PROGRAM STATUS WORD
 
-
-    // COMMUNICATION
-
-    // MEMORY BUS
-
     // PROGRAM
     pub current_op: Vec<u8>,
-    pub op_request: bool,
 
-    // OPERAND
+    // MEMORY
+    wram: Rc<RefCell<[u8; 0x10000]>>,
+    io: Rc<RefCell<[u8; 0x0100]>>,
+    
     segment_override: Option<u16>,
-    pub read_requests: Vec<u32>,
-    pub read_responses: HashMap<u32, u8>,
-    pub write_requests: HashMap<u32, u8>,
-
-    // I/O BUS
-    pub io_responses: HashMap<u16, u8>,
-    pub io_read_requests: Vec<u16>,
-    pub io_write_requests: HashMap<u16, u8>,
 }
 
 impl MemBus for V30MZ {
-    fn read_mem(&mut self, addr: u32) -> Result<u8, ()> {
-        match self.read_responses.get(&addr) {
-            None => {
-                self.read_requests.push(addr);
-                Err(())
-            }
-            Some(byte) => {
-                Ok(*byte)
-            }
-        }
+    fn read_mem(&mut self, addr: u32) -> u8 {
+        self.wram.borrow()[addr as usize]
     }
 
     fn write_mem(&mut self, addr: u32, data: u8) {
-        self.write_requests.insert(addr, data);
-        self.read_responses.remove(&addr);
+        self.wram.borrow_mut()[addr as usize] = data
     }
 }
 
 impl IOBus for V30MZ {
-    fn read_io(&mut self, addr: u16) -> Result<u8, ()> {
-        match self.io_responses.get(&addr) {
-            None => {
-                self.io_read_requests.push(addr);
-                Err(())
-            }
-            Some(byte) => {
-                Ok(*byte)
-            } 
+    fn read_io(&mut self, addr: u16) -> u8 {
+        if addr & 0x0100 != 0 {
+            return 0x90
         }
+
+        let port = addr as u8;
+        if addr > 0xFF && port > 0xB8 {
+            return 0x90
+        }
+
+        self.io.borrow()[port as usize]
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
-        self.io_write_requests.insert(addr, byte);
+        self.io.borrow_mut()[addr as usize] = byte
     }
 }
 
 impl V30MZ {
-    pub fn new() -> Self {
+    pub fn new(wram: Rc<RefCell<[u8; 0x10000]>>, io: Rc<RefCell<[u8; 0x0100]>>) -> Self {
         Self {
             AW: 0, BW: 0, CW: 0, DW: 0,
             DS0: 0, DS1: 0, PS: 0, SS: 0,
@@ -132,23 +113,20 @@ impl V30MZ {
             
             PSW: CpuStatus::from_bits_truncate(0xF022),
 
-            current_op: Vec::with_capacity(8), op_request: false,
-            segment_override: None, read_requests: Vec::new(), read_responses: HashMap::new(), write_requests: HashMap::new(),
+            current_op: Vec::with_capacity(8),
+            segment_override: None,
 
-            io_responses: HashMap::with_capacity(2), io_read_requests: Vec::with_capacity(2), io_write_requests: HashMap::with_capacity(2),
+            wram, io,
         }
     }
 
     pub fn tick(&mut self) {
-        self.write_requests.clear();
         let _ = self.execute();
     }
 
-    pub fn execute(&mut self) -> Result<(), ()> {
+    pub fn execute(&mut self) {
         // CPU requires at least one byte of instruction code to execute
-        self.op_request = self.current_op.len() == 0;
-        if self.op_request {return Err(());}
-        self.expect_op_bytes(1)?;
+        self.expect_op_bytes(1);
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
 
@@ -159,7 +137,7 @@ impl V30MZ {
 
             // PUSH
             0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x6A | 0x9C => self.push_op(op.op2),
-            0x60 => Ok(self.push_r()),
+            0x60 => self.push_r(),
             // POP
             0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op2),
             0x61 => self.pop_r(),
@@ -171,26 +149,26 @@ impl V30MZ {
             0x18..=0x1D => self.subc(op.op1, op.op2, op.mode),
 
             // ADJ4A
-            0x27 => Ok(self.adj4a()),
+            0x27 => self.adj4a(),
 
             // SUB
             0x28..=0x2D => self.sub(op.op1, op.op2, op.mode),
 
             // ADJ4S
-            0x2F => Ok(self.adj4s()),
+            0x2F => self.adj4s(),
 
             // ADJBA
-            0x37 => Ok(self.adjba()),
+            0x37 => self.adjba(),
 
             // CMP
             0x38..=0x3D => self.cmp(op.op1, op.op2, op.mode),
 
             // ADJBS
-            0x3F => Ok(self.adjbs()),
+            0x3F => self.adjbs(),
 
             // Immediate Group
             0x80..=0x83 => {
-                self.expect_op_bytes(2)?;
+                self.expect_op_bytes(2);
                 let sub_op = &IMMEDIATE_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 match (op.code, sub_op.code) {
                     (_, 0) => self.add(op.op1, op.op2, op.mode),
@@ -211,11 +189,9 @@ impl V30MZ {
                 let mut psw = self.PSW.bits();
                 psw = swap_l(psw, AH);
                 self.PSW = CpuStatus::from_bits_truncate(psw);
-                Ok(())
             }
             0x9F => {
                 self.AW = swap_h(self.AW, self.PSW.bits() as u8);
-                Ok(())
             }
             0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(op),
 
@@ -229,7 +205,7 @@ impl V30MZ {
             0x99 => self.cvtwl(),
 
             // SALC
-            0xD6 => Ok(self.salc()),
+            0xD6 => self.salc(),
 
             // TRANS
             0xD7 => self.trans(),
@@ -242,7 +218,7 @@ impl V30MZ {
 
             // Group 2
             0xFE | 0xFF => {
-                self.expect_op_bytes(2)?;
+                self.expect_op_bytes(2);
                 let sub_op = &GROUP_2[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 match (op.code, sub_op.code) {
                     (_, 6) => self.push_op(Operand::MEMORY),
@@ -251,10 +227,9 @@ impl V30MZ {
             }
                 
             code => panic!("Not yet implemented! Code: {:02X}", code),
-        }?;
+        };
 
         self.finish_op();
-        Ok(())
     }
 
     pub fn get_pc_address(&mut self) -> u32 {
@@ -263,13 +238,11 @@ impl V30MZ {
 
     fn finish_op(&mut self) {
         self.current_op.clear();
-        self.io_responses.clear();
-        self.read_requests.clear();
         self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
     }
 
-    fn raise_exception(&mut self, vector: u8) -> Result<(), ()> {
+    fn raise_exception(&mut self, vector: u8) {
         self.PC = self.PC.wrapping_add(self.pc_displacement);
 
         self.push(self.PSW.bits());
@@ -278,7 +251,6 @@ impl V30MZ {
         self.push(self.PS);
         self.push(self.PC);
 
-        (self.PS, self.PC) = self.read_mem_32(vector as u32)?;
-        Ok(())
+        (self.PS, self.PC) = self.read_mem_32(vector as u32);
     }
 }

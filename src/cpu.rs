@@ -6,6 +6,7 @@ mod opcode;
 // An operand of NONE may also indicate that the operand
 // is better detected by means other than checking the enum
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
 pub enum Operand {
     MEMORY,
     REGISTER,
