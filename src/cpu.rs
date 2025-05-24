@@ -11,6 +11,7 @@ pub enum Operand {
     REGISTER,
     ACCUMULATOR,
     IMMEDIATE,
+    IMMEDIATE_S,
     SEGMENT,
     DIRECT,
     NONE,

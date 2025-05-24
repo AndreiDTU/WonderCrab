@@ -71,7 +71,7 @@ impl V30MZ {
 
     pub fn pop(&mut self) -> Result<u16, ()> {
         let addr = self.get_stack_address();
-        self.PS = self.PS.wrapping_add(2);
+        self.SP = self.SP.wrapping_add(2);
         self.read_mem_16(addr)
     }
 
@@ -93,7 +93,7 @@ impl V30MZ {
                 self.expect_op_bytes(3)?;
                 let src = u16::from_le_bytes([self.current_op[1], self.current_op[2]]);
 
-                let r_bits = (self.current_op[0] & 0b111) >> 3;
+                let r_bits = self.current_op[0] & 0b111;
                 let dest = self.resolve_register_operand(r_bits, mode);
                 match dest {
                     RegisterType::RW(r) => *r = src,
@@ -133,6 +133,11 @@ impl V30MZ {
             Operand::DIRECT => {
                 let addr = self.get_direct_mem_address()?;
                 self.read_mem_16(addr)
+            }
+            Operand::IMMEDIATE_S => {
+                self.expect_op_bytes(2)?;
+
+                Ok(self.current_op[1] as u16)
             }
             Operand::NONE => panic!("None src not supported"),
         }
@@ -447,7 +452,7 @@ impl V30MZ {
     }
 
     pub fn get_stack_address(&self) -> u32 {
-        self.apply_segment(self.PS, self.SS)
+        self.apply_segment(self.SP, self.SS)
     }
 
     pub fn apply_segment(&self, offset: u16, segment: u16) -> u32 {

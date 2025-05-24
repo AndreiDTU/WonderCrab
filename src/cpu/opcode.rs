@@ -171,7 +171,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
 
         OpCode::one_byte(0x68, "PUSH",    Operand::NONE,        Operand::IMMEDIATE,   Mode::M16),
         OpCode::three_term(0x69, "MUL", Operand::REGISTER, Operand::MEMORY, Operand::IMMEDIATE, Mode::M16),
-        OpCode::one_byte(0x6A, "PUSH",    Operand::NONE,        Operand::IMMEDIATE,   Mode::M16),
+        OpCode::one_byte(0x6A, "PUSH",    Operand::NONE,        Operand::IMMEDIATE_S,   Mode::M16),
         OpCode::three_term(0x6B, "MUL", Operand::REGISTER, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
         OpCode::one_byte(0x6C, "INMB",    Operand::NONE,        Operand::NONE,        Mode::M8 ),
         OpCode::one_byte(0x6D, "INMW",    Operand::NONE,        Operand::NONE,        Mode::M16),
@@ -198,7 +198,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
 
         OpCode::two_byte(0x80, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
         OpCode::two_byte(0x81, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
-        OpCode::two_byte(0x82, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
+        OpCode::two_byte(0x82, Operand::MEMORY, Operand::IMMEDIATE_S, Mode::M8),
         OpCode::two_byte(0x83, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
         OpCode::one_byte(0x84, "TEST",    Operand::MEMORY,      Operand::REGISTER,    Mode::M8 ),
         OpCode::one_byte(0x85, "TEST",    Operand::MEMORY,      Operand::REGISTER,    Mode::M16),

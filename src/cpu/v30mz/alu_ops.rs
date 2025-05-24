@@ -29,18 +29,6 @@ impl V30MZ {
             Mode::M32 => unreachable!(),
         }
     }
-
-    pub fn add_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(3)?;
-        let old_dest = self.resolve_mem_src_16(self.current_op[2])? as u32;
-        let src = self.expect_extra_byte() as u32;
-        
-        let result = old_dest.wrapping_add(src);
-
-        self.update_flags_add_16(old_dest, src, result);
-
-        self.write_src_to_dest_16(Operand::MEMORY, result as u16)
-    }
     
     pub fn addc(&mut self, op1: Operand, op2: Operand, mode: Mode) -> Result<(), ()> {
         // Adds the two operands, plus 1 more if the carry flag (CY) was set.
@@ -72,20 +60,6 @@ impl V30MZ {
             }
             Mode::M32 => unreachable!(),
         }
-    }
-
-    pub fn addc_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(3)?;
-        let old_dest = self.resolve_mem_src_16(self.current_op[2])? as u32;
-        let src = self.expect_extra_byte() as u32;
-
-        let carry = self.PSW.contains(CpuStatus::CARRY) as u32;
-
-        let result = old_dest.wrapping_add(src).wrapping_add(carry);
-
-        self.update_flags_add_16(old_dest, src, result);
-
-        self.write_src_to_dest_16(Operand::MEMORY, result as u16)
     }
 
     pub fn adj4a(&mut self) {
@@ -194,14 +168,47 @@ impl V30MZ {
         Ok(())
     }
 
-    pub fn cmp_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(3)?;
-        let old_dest = self.resolve_mem_src_16(self.current_op[1])?;
-        let src = self.current_op[2] as u16;
+    pub fn dec(&mut self, op: Operand, mode: Mode) -> Result<(), ()> {
+        match op {
+            Operand::REGISTER => {
+                let bits = self.current_op[0] & 0b111;
+                let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
+                let (o, a) = (*r == 0xFFFF, *r & 0xF == 0);
+                *r = r.wrapping_sub(1);
+                let (z, s) = (*r == 0, *r & 0x8000 == 1);
+                self.PSW.set(CpuStatus::OVERFLOW, o);
+                self.PSW.set(CpuStatus::AUX_CARRY, a);
+                self.PSW.set(CpuStatus::ZERO, z);
+                self.PSW.set(CpuStatus::SIGN, s);
+            }
+            Operand::MEMORY => {
+                match mode {
+                    Mode::M8 => {
+                        self.expect_op_bytes(1)?;
+                        let src = self.resolve_mem_src_8(self.current_op[1])?;
+                        self.PSW.set(CpuStatus::OVERFLOW, src == 0xFF);
+                        self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
+                        let res = src.wrapping_sub(1);
+                        self.PSW.set(CpuStatus::ZERO, src == 0);
+                        self.PSW.set(CpuStatus::SIGN, src & 0x80 == 1);
+                        self.write_src_to_dest_8(Operand::MEMORY, res)?;
+                    }
+                    Mode::M16 => {
+                        self.expect_op_bytes(1)?;
+                        let src = self.resolve_mem_src_16(self.current_op[1])?;
+                        self.PSW.set(CpuStatus::OVERFLOW, src == 0xFFFF);
+                        self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
+                        let res = src.wrapping_sub(1);
+                        self.PSW.set(CpuStatus::ZERO, src == 0);
+                        self.PSW.set(CpuStatus::SIGN, src & 0x8000 == 1);
+                        self.write_src_to_dest_16(Operand::MEMORY, res)?;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => unreachable!()
+        }
 
-        let result = old_dest.wrapping_sub(src);
-
-        self.update_flags_sub_16(old_dest, src, result);
         Ok(())
     }
 
@@ -261,17 +268,6 @@ impl V30MZ {
         }
     }
 
-    pub fn sub_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(3)?;
-        let old_dest = self.resolve_mem_src_16(self.current_op[1])?;
-        let src = self.current_op[2] as u16;
-
-        let result = old_dest.wrapping_sub(src);
-
-        self.update_flags_sub_16(old_dest, src, result);
-        self.write_mem_operand_16(src)
-    }
-
     pub fn subc(&mut self, op1: Operand, op2: Operand, mode: Mode) -> Result<(), ()> {
         // Subtracts the two operands. The result is stored in the left operand.
         match mode {
@@ -299,19 +295,6 @@ impl V30MZ {
             }
             Mode::M32 => unreachable!(),
         }
-    }
-
-    pub fn subc_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(3)?;
-        let old_dest = self.resolve_mem_src_16(self.current_op[1])?;
-        let src = self.current_op[2] as u16;
-
-        let carry = self.PSW.contains(CpuStatus::CARRY) as u16;
-
-        let result = old_dest.wrapping_sub(src).wrapping_add(carry);
-
-        self.update_flags_sub_16(old_dest, src, result);
-        self.write_mem_operand_16(src)
     }
 }
 

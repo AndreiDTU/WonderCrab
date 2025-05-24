@@ -60,7 +60,7 @@ impl MemBus for SoC {
                     self.wram[addr as usize]
                 }
             }
-            _ => todo!()
+            addr => panic!("Not yet implemented! Addr: {:05X}", addr)
         };
 
         Ok(byte)

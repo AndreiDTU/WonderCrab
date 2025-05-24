@@ -4,37 +4,16 @@ impl V30MZ {
     pub fn push_op(&mut self, src: Operand) -> Result<(), ()> {
         // Stores a 16-bit value on the stack.
         let src = match src {
-            Operand::MEMORY => {
-                self.expect_op_bytes(2)?;
-                self.resolve_mem_src_16(self.current_op[1])?
-            },
+            Operand::SEGMENT => {
+                let bits = (self.current_op[0] & 0b0001_1000) >> 3;
+                *self.resolve_segment(bits)
+            }
             Operand::REGISTER => {
                 let bits = self.current_op[0] & 0b111;
-                self.resolve_register_operand(bits, Mode::M16).try_into().unwrap()
-            },
-            Operand::ACCUMULATOR => self.AW,
-            Operand::IMMEDIATE => {
-                self.expect_op_bytes(3)?;
-                u16::from_le_bytes([self.current_op[1], self.current_op[2]])
-            },
-            Operand::SEGMENT => {
-                let bits = self.current_op[0] >> 3;
-                *self.resolve_segment(bits)
-            },
-            Operand::DIRECT => unreachable!(),
-
-            // Using this to represent PUSH PSW
-            // PUSH R implemented separately
-            Operand::NONE => self.PSW.bits()
+                self.resolve_register_operand(bits, Mode::M16).try_into()?
+            }
+            _ => self.resolve_src_16(src)?
         };
-        self.push(src);
-
-        Ok(())
-    }
-
-    pub fn push_s(&mut self) -> Result<(), ()> {
-        self.expect_op_bytes(2)?;
-        let src = self.current_op[1] as u16;
         self.push(src);
 
         Ok(())
@@ -55,6 +34,7 @@ impl V30MZ {
     pub fn pop_op(&mut self, dest: Operand) -> Result<(), ()> {
         // Retrieves a 16-bit value from the stack and stores it in the operand.
         let src = self.pop()?;
+        println!("{:04X}", src);
         match dest {
             Operand::MEMORY => self.write_mem_operand_16(src)?,
             Operand::REGISTER => {
@@ -292,6 +272,90 @@ mod test {
     use crate::assert_eq_hex;
 
     use super::*;
+
+    #[test]
+    fn test_0x06_push_seg() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0xBC, 0x00, 0x10, // SP <- 0x1000
+            0x06              // PUSH DS1
+        ]);
+
+        soc.get_cpu().DS1 = 0x1234;
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().SP, 0x1000);
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), 0x1234);
+    }
+
+    #[test]
+    fn test_push_pop_reg() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0xB8, 0x11, 0x22, // AW <- 0x2211
+            0xB9, 0x33, 0x44, // CW <- 0x4433
+            0xBA, 0x55, 0x66, // DW <- 0x6655
+            0xBB, 0x77, 0x88, // BW <- 0x8877
+            0xBC, 0x00, 0x10, // SP <- 0xAA99
+            0xBD, 0xBB, 0xCC, // BP <- 0xCCBB
+            0xBE, 0xDD, 0xEE, // IX <- 0xEEDD
+            0xBF, 0xFF, 0x00, // IY <- 0x00FF
+
+            0x54, 0x50, 0x51, // PUSH
+            0x52, 0x53, 0x55, // ALL
+            0x56, 0x57,       // REGISTERS
+
+            0x58, 0x59, 0x5A, // POP AW, CW, DW
+        ]);
+
+        for _ in 0..8 {
+            soc.tick();
+        }
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        println!("{:05X}", addr);
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().SP.wrapping_add(2));
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().AW);
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().CW);
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().DW);
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().BW);
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().BP);
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().IX);
+
+        soc.tick();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.read_mem_16(addr).unwrap(), soc.get_cpu().IY);
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().AW, soc.get_cpu().IY);
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().CW, soc.get_cpu().IX);
+
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().DW, soc.get_cpu().BP);
+    }
 
     #[test]
     fn test_0x88_mov_reg_to_mem_8() {
@@ -688,6 +752,20 @@ mod test {
         assert_eq_hex!(soc.get_cpu().PC, 0x0006);
         assert_eq_hex!(soc.get_wram()[0x0100], 0x34);
         assert_eq_hex!(soc.get_wram()[0x0101], 0x12);
+    }
+
+    #[test]
+    fn test_0xd6_salc() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![0xD6, 0xD6]);
+
+        soc.get_cpu().PSW.insert(CpuStatus::CARRY);
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().AW, 0x00FF);
+        
+        soc.get_cpu().PSW.remove(CpuStatus::CARRY);
+        soc.tick();
+        assert_eq_hex!(soc.get_cpu().AW, 0x0000);
     }
 
     #[test]

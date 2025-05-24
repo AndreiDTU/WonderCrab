@@ -158,12 +158,10 @@ impl V30MZ {
             0x00..=0x05 => self.add(op.op1, op.op2, op.mode),
 
             // PUSH
-            0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x9C => self.push_op(op.op2),
+            0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x6A | 0x9C => self.push_op(op.op2),
             0x60 => Ok(self.push_r()),
-            0x6A => self.push_s(),
-
             // POP
-            0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op1),
+            0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op2),
             0x61 => self.pop_r(),
 
             // ADDC
@@ -195,11 +193,6 @@ impl V30MZ {
                 self.expect_op_bytes(2)?;
                 let sub_op = &IMMEDIATE_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 match (op.code, sub_op.code) {
-                    (0x82, 0) => self.add_s(),
-                    (0x82, 2) => self.addc_s(),
-                    (0x82, 3) => self.subc_s(),
-                    (0x82, 5) => self.sub_s(),
-                    (0x82, 7) => self.cmp_s(),
                     (_, 0) => self.add(op.op1, op.op2, op.mode),
                     (_, 2) => self.addc(op.op1, op.op2, op.mode),
                     (_, 3) => self.subc(op.op1, op.op2, op.mode),
@@ -257,7 +250,7 @@ impl V30MZ {
                 }
             }
                 
-            _ => todo!(),
+            code => panic!("Not yet implemented! Code: {:02X}", code),
         }?;
 
         self.finish_op();
