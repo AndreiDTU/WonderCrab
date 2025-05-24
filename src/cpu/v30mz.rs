@@ -121,7 +121,7 @@ impl V30MZ {
     }
 
     pub fn tick(&mut self) {
-        let _ = self.execute();
+        self.execute();
     }
 
     pub fn execute(&mut self) {

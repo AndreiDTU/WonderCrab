@@ -534,12 +534,12 @@ mod test {
         
         soc.get_cpu().AW = 0x00FF;
         soc.get_cpu().current_op = vec![0x98];
-        let _ = soc.get_cpu().execute();
+        soc.tick();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFF);
 
         soc.get_cpu().AW = 0xFF00;
         soc.get_cpu().current_op = vec![0x98];
-        let _ = soc.get_cpu().execute();
+        soc.tick();
         assert_eq_hex!(soc.get_cpu().AW, 0x0000);
     }
 
@@ -549,12 +549,12 @@ mod test {
 
         soc.get_cpu().AW = 0x8000;
         soc.get_cpu().current_op = vec![0x99];
-        let _ = soc.get_cpu().execute();
+        soc.tick();
         assert_eq_hex!(soc.get_cpu().DW, 0xFFFF);
 
         soc.get_cpu().AW = 0x7FFF;
         soc.get_cpu().current_op = vec![0x99];
-        let _ = soc.get_cpu().execute();
+        soc.tick();
         assert_eq_hex!(soc.get_cpu().DW, 0x0000);
     }
 
