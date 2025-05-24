@@ -212,6 +212,85 @@ impl V30MZ {
         Ok(())
     }
 
+    pub fn div(&mut self, mode: Mode) -> Result<(), ()> {
+        match mode {
+            Mode::M8 => {
+                self.expect_op_bytes(2)?;
+                let divisor = self.resolve_mem_src_8(self.current_op[1])? as i8 as i16;
+                if divisor == 0 {return self.raise_exception(0)}
+
+                let dividend = self.AW as i16;
+
+                let quotient = dividend / divisor;
+                if quotient > 0x7F || quotient < -0x7F {return self.raise_exception(0)}
+
+                let remainder = dividend.wrapping_rem(divisor) as i8;
+
+                self.AW = swap_h(self.AW, remainder as i8 as u8);
+                self.AW = swap_l(self.AW, quotient as i8 as u8);
+            }
+            Mode::M16 => {
+                self.expect_op_bytes(2)?;
+                let divisor = self.resolve_mem_src_16(self.current_op[1])? as i16 as i32;
+                if divisor == 0 {return self.raise_exception(0)}
+
+                let dividend = ((self.DW as u32) << 16 | self.AW as u32) as i32;
+
+                let quotient = dividend / divisor;
+                if quotient > 0x7FFF || quotient < -0x7FFF {return self.raise_exception(0)}
+
+                let remainder = dividend.wrapping_rem(divisor);
+
+                self.DW = remainder as i16 as u16;
+                self.AW = quotient as i16 as u16;
+            }
+            _ => unreachable!()
+        }
+
+        Ok(())
+    }
+
+    pub fn divu(&mut self, mode: Mode) -> Result<(), ()> {
+        match mode {
+            Mode::M8 => {
+                self.expect_op_bytes(2)?;
+                let divisor = self.resolve_mem_src_8(self.current_op[1])? as u16;
+                if divisor == 0 {return self.raise_exception(0)}
+
+                let quotient = self.AW / divisor;
+                if quotient > 0xFF {return self.raise_exception(0)}
+
+                let remainder = self.AW.wrapping_rem(divisor);
+
+                self.AW = swap_h(self.AW, remainder as u8);
+                self.AW = swap_l(self.AW, quotient as u8);
+            }
+            Mode::M16 => {
+                self.expect_op_bytes(2)?;
+                let divisor = self.resolve_mem_src_16(self.current_op[1])? as u32;
+                if divisor == 0 {return self.raise_exception(0)}
+
+                let quotient = self.AW as u32 / divisor;
+                if quotient > 0xFF {return self.raise_exception(0)}
+
+                let remainder = (self.AW as u32).wrapping_rem(divisor);
+
+                self.DW = remainder as u16;
+                self.AW = quotient as u16;
+            }
+            _ => unreachable!()
+        }
+
+        Ok(())
+    }
+
+    pub fn fpo1(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        self.resolve_mem_operand(self.current_op[1], Mode::M16)?;
+
+        Ok(())
+    }
+
     pub fn cvtbd(&mut self) -> Result<(), ()> {
         self.expect_op_bytes(2)?;
         let src = self.current_op[1];
