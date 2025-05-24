@@ -175,11 +175,12 @@ impl V30MZ {
                 let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
                 let (o, a) = (*r == 0xFFFF, *r & 0xF == 0);
                 *r = r.wrapping_sub(1);
-                let (z, s) = (*r == 0, *r & 0x8000 == 1);
+                let (z, s, p) = (*r == 0, *r & 0x8000 == 1, parity(*r as u8));
                 self.PSW.set(CpuStatus::OVERFLOW, o);
                 self.PSW.set(CpuStatus::AUX_CARRY, a);
                 self.PSW.set(CpuStatus::ZERO, z);
                 self.PSW.set(CpuStatus::SIGN, s);
+                self.PSW.set(CpuStatus::PARITY, p);
             }
             Operand::MEMORY => {
                 match mode {
@@ -191,6 +192,7 @@ impl V30MZ {
                         let res = src.wrapping_sub(1);
                         self.PSW.set(CpuStatus::ZERO, src == 0);
                         self.PSW.set(CpuStatus::SIGN, src & 0x80 == 1);
+                        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_8(Operand::MEMORY, res)?;
                     }
                     Mode::M16 => {
@@ -201,6 +203,7 @@ impl V30MZ {
                         let res = src.wrapping_sub(1);
                         self.PSW.set(CpuStatus::ZERO, src == 0);
                         self.PSW.set(CpuStatus::SIGN, src & 0x8000 == 1);
+                        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_16(Operand::MEMORY, res)?;
                     }
                     _ => unreachable!(),
@@ -287,6 +290,159 @@ impl V30MZ {
     pub fn fpo1(&mut self) -> Result<(), ()> {
         self.expect_op_bytes(2)?;
         self.resolve_mem_operand(self.current_op[1], Mode::M16)?;
+
+        Ok(())
+    }
+
+    pub fn inc(&mut self, op: Operand, mode: Mode) -> Result<(), ()> {
+        match op {
+            Operand::REGISTER => {
+                let bits = self.current_op[0] & 0b111;
+                let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
+                let (o, a) = (*r == 0x7FFF, *r & 0xF == 0);
+                *r = r.wrapping_add(1);
+                let (z, s, p) = (*r == 0, *r & 0x8000 == 1, parity(*r as u8));
+                self.PSW.set(CpuStatus::OVERFLOW, o);
+                self.PSW.set(CpuStatus::AUX_CARRY, a);
+                self.PSW.set(CpuStatus::ZERO, z);
+                self.PSW.set(CpuStatus::SIGN, s);
+                self.PSW.set(CpuStatus::PARITY, p);
+            }
+            Operand::MEMORY => {
+                match mode {
+                    Mode::M8 => {
+                        self.expect_op_bytes(1)?;
+                        let src = self.resolve_mem_src_8(self.current_op[1])?;
+                        self.PSW.set(CpuStatus::OVERFLOW, src == 0x7F);
+                        self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
+                        let res = src.wrapping_add(1);
+                        self.PSW.set(CpuStatus::ZERO, src == 0);
+                        self.PSW.set(CpuStatus::SIGN, src & 0x80 == 1);
+                        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+                        self.write_src_to_dest_8(Operand::MEMORY, res)?;
+                    }
+                    Mode::M16 => {
+                        self.expect_op_bytes(1)?;
+                        let src = self.resolve_mem_src_16(self.current_op[1])?;
+                        self.PSW.set(CpuStatus::OVERFLOW, src == 0x7FFF);
+                        self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
+                        let res = src.wrapping_add(1);
+                        self.PSW.set(CpuStatus::ZERO, src == 0);
+                        self.PSW.set(CpuStatus::SIGN, src & 0x8000 == 1);
+                        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+                        self.write_src_to_dest_16(Operand::MEMORY, res)?;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => unreachable!()
+        }
+
+        Ok(())
+    }
+
+    pub fn mul(&mut self, op3: Option<Operand>, mode: Mode) -> Result<(), ()> {
+        match op3 {
+            None => {
+                match mode {
+                    Mode::M8 => {
+                        self.expect_op_bytes(2)?;
+                        let factor = self.resolve_mem_src_8(self.current_op[1])? as i8 as i16;
+
+                        self.AW = ((self.AW as u8 as i8 as i16) * factor) as u16;
+                        let sign_ext = (self.AW & 0x80 == 0 && self.AW >> 8 == 0xFF) || (self.AW & 0x80 != 0 && self.AW >> 8 == 0);
+                        self.PSW.set(CpuStatus::OVERFLOW, sign_ext);
+                        self.PSW.set(CpuStatus::CARRY, sign_ext);
+                    }
+                    Mode::M16 => {
+                        self.expect_op_bytes(2)?;
+                        let factor1 = self.resolve_mem_src_16(self.current_op[1])? as i16 as i32;
+                        let factor2 = self.AW as i16 as i32;
+                        let result = factor1 * factor2;
+                        self.AW = result as i16 as u16;
+                        self.DW = (result >> 16) as i16 as u16;
+                        
+                        let sign_ext = (self.AW & 0x8000 == 0 && self.DW == 0xFFFF) || (self.AW & 0x8000 != 0 && self.DW == 0);
+                        self.PSW.set(CpuStatus::OVERFLOW, sign_ext);
+                        self.PSW.set(CpuStatus::CARRY, sign_ext); 
+                    }
+                    Mode::M32 => unreachable!(),
+                }
+            }
+            Some(op3) => {
+                self.expect_op_bytes(2)?;
+                let factor1 = self.resolve_mem_src_16(self.current_op[1])? as i16;
+                let factor2 = match op3 {
+                    Operand::IMMEDIATE_S => self.expect_extra_byte() as i8 as i16,
+                    Operand::IMMEDIATE => self.expect_extra_word() as i16,
+                    _ => unreachable!(),
+                };
+
+                let result = factor1 as i32 * factor2 as i32;
+                let high_byte = (result >> 16) as i16 as u16;
+
+                self.AW = result as i16 as u16;
+                        
+                let sign_ext = (self.AW & 0x8000 == 0 && high_byte == 0xFFFF) || (self.AW & 0x8000 != 0 && high_byte == 0);
+                self.PSW.set(CpuStatus::OVERFLOW, sign_ext);
+                self.PSW.set(CpuStatus::CARRY, sign_ext); 
+            }
+        }
+        self.PSW.insert(CpuStatus::ZERO);
+        self.PSW.remove(CpuStatus::SIGN);
+        self.PSW.remove(CpuStatus::PARITY);
+        self.PSW.remove(CpuStatus::AUX_CARRY);
+
+        Ok(())
+    }
+
+    pub fn mulu(&mut self) -> Result<(), ()> {
+        self.expect_op_bytes(2)?;
+        let src = self.resolve_mem_src_16(self.current_op[1])? as u32;
+        let result = self.AW as u32 * src;
+        self.AW = result as u16;
+        self.DW = (result >> 16) as u16;
+        
+        self.PSW.set(CpuStatus::OVERFLOW, self.DW != 0);
+        self.PSW.set(CpuStatus::CARRY, self.DW != 0);
+        self.PSW.insert(CpuStatus::ZERO);
+        self.PSW.remove(CpuStatus::SIGN);
+        self.PSW.remove(CpuStatus::PARITY);
+        self.PSW.remove(CpuStatus::AUX_CARRY);
+
+        Ok(())
+    }
+
+    pub fn neg(&mut self, mode: Mode) -> Result<(), ()> {
+        match mode {
+            Mode::M8 => {
+                self.expect_op_bytes(2)?;
+                let src = self.resolve_mem_src_8(self.current_op[1])?;
+                let res = src.wrapping_neg();
+                self.write_mem_operand_8(res)?;
+
+                self.PSW.set(CpuStatus::ZERO, res == 0);
+                self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
+                self.PSW.set(CpuStatus::OVERFLOW, src == (i8::MIN) as u8);
+                self.PSW.set(CpuStatus::CARRY, src != 0);
+                self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+                self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF != 0);
+            }
+            Mode::M16 => {
+                self.expect_op_bytes(2)?;
+                let src = self.resolve_mem_src_16(self.current_op[1])?;
+                let res = src.wrapping_neg();
+                self.write_mem_operand_16(res)?;
+
+                self.PSW.set(CpuStatus::ZERO, res == 0);
+                self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
+                self.PSW.set(CpuStatus::OVERFLOW, src == (i16::MIN) as u16);
+                self.PSW.set(CpuStatus::CARRY, src != 0);
+                self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+                self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF != 0);
+            }
+            _ => unreachable!()
+        }
 
         Ok(())
     }
@@ -378,6 +534,7 @@ impl V30MZ {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod test {
     use crate::soc::SoC;
     use crate::assert_eq_hex;

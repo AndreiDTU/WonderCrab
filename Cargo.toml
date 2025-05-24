@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 bitflags = "2.9.1"
 once_cell = "1.21.3"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }

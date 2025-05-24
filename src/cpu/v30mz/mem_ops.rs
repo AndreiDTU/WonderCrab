@@ -267,6 +267,7 @@ impl V30MZ {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod test {
     use crate::soc::SoC;
     use crate::assert_eq_hex;

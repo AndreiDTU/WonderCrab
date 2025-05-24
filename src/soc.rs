@@ -159,4 +159,5 @@ impl SoC {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub mod test;
