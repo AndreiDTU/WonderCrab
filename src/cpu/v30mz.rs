@@ -11,6 +11,7 @@ mod mem_ops;
 mod alu_ops;
 mod bit_ops;
 mod ctrl_ops;
+mod block_ops;
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
@@ -68,7 +69,7 @@ pub struct V30MZ {
     // PROGRAM
     pub current_op: Vec<u8>,
     segment_override: Option<u16>,
-    halt: bool,
+    halt: bool, rep: bool, rep_z: bool,
 
     // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
@@ -107,7 +108,8 @@ impl V30MZ {
             PSW: CpuStatus::from_bits_truncate(0xF022),
 
             current_op: Vec::with_capacity(8),
-            segment_override: None, halt: false,
+            segment_override: None,
+            halt: false, rep: false, rep_z: false,
 
             mem_bus: wram, io_bus: io,
         }
@@ -123,6 +125,10 @@ impl V30MZ {
         self.expect_op_bytes(1);
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
+
+        if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
+            self.rep = false;
+        }
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
@@ -155,6 +161,21 @@ impl V30MZ {
             // BUSLOCK
             0xF0 => {
                 self.mem_bus.borrow_mut().owner = Owner::CPU;
+                self.finish_prefix();
+                return;
+            }
+
+            // REPNE
+            0xF2 => {
+                self.rep = true;
+                self.rep_z = false;
+                self.finish_prefix();
+            }
+
+            // REP
+            0xF3 => {
+                self.rep = true;
+                self.rep_z = true;
                 self.finish_prefix();
                 return;
             }
@@ -422,12 +443,18 @@ impl V30MZ {
     }
 
     fn finish_op(&mut self) {
-        self.current_op.clear();
-        self.PC = self.PC.wrapping_add(self.pc_displacement);
-        self.pc_displacement = 0;
-        self.mem_bus.borrow_mut().owner = Owner::NONE;
+        if self.rep {
+            self.CW = self.CW.wrapping_sub(1);
+        }
 
-        if self.PSW.contains(CpuStatus::BREAK) {self.raise_exception(1)}
+        if !self.rep || self.CW == 0 {
+            self.PC = self.PC.wrapping_add(self.pc_displacement);
+            self.mem_bus.borrow_mut().owner = Owner::NONE;
+            if self.PSW.contains(CpuStatus::BREAK) {self.raise_exception(1)}
+        }
+
+        self.current_op.clear();
+        self.pc_displacement = 0;
     }
 
     fn finish_prefix(&mut self) {
@@ -450,7 +477,7 @@ impl V30MZ {
 
     fn poll_interrupts(&mut self) {
         let nmi = self.read_io(0xB7) != 0;
-        if self.read_io(0xB4) != 0 || nmi {
+        if (self.read_io(0xB4) != 0 || nmi) && self.mem_bus.borrow().owner != Owner::CPU {
             self.halt = false;
             if (self.PSW.contains(CpuStatus::INTERRUPT)) || nmi {
                 let vector = self.read_io(0xB0);

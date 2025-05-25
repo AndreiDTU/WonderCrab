@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use super::io_bus::{IOBus, IOBusConnection};
 
+#[derive(PartialEq, Eq)]
 pub enum Owner {
     NONE,
     CPU,
