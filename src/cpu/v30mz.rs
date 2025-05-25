@@ -4,7 +4,7 @@ use bitflags::bitflags;
 
 use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}};
 
-use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_2, IMMEDIATE_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
+use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_1, GROUP_2, IMMEDIATE_GROUP, SHIFT_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
 mod util;
 mod mem_ops;
@@ -134,11 +134,17 @@ impl V30MZ {
             0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op2),
             0x61 => self.pop_r(),
 
+            // OR
+            0x08..=0x0D => self.or(op.op1, op.op2, op.mode),
+
             // ADDC
             0x10..=0x15 => self.addc(op.op1, op.op2, op.mode),
 
             // SUBC
             0x18..=0x1D => self.subc(op.op1, op.op2, op.mode),
+
+            // AND
+            0x20..=0x25 => self.and(op.op1, op.op2, op.mode),
 
             // ADJ4A
             0x27 => self.adj4a(),
@@ -149,6 +155,9 @@ impl V30MZ {
             // ADJ4S
             0x2F => self.adj4s(),
 
+            // XOR
+            0x30..=0x35 => self.xor(op.op1, op.op2, op.mode),
+
             // ADJBA
             0x37 => self.adjba(),
 
@@ -158,19 +167,34 @@ impl V30MZ {
             // ADJBS
             0x3F => self.adjbs(),
 
+            // INC
+            0x40..=0x47 => self.inc(op.op1, op.mode),
+
+            // DEC
+            0x48..=0x4F => self.dec(op.op1, op.mode),
+
+            // MUL
+            0x69 | 0x6B => self.mul(op.op3, op.mode),
+
             // Immediate Group
             0x80..=0x83 => {
                 self.expect_op_bytes(2);
                 let sub_op = &IMMEDIATE_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
-                match (op.code, sub_op.code) {
-                    (_, 0) => self.add(op.op1, op.op2, op.mode),
-                    (_, 2) => self.addc(op.op1, op.op2, op.mode),
-                    (_, 3) => self.subc(op.op1, op.op2, op.mode),
-                    (_, 5) => self.sub(op.op1, op.op2, op.mode),
-                    (_, 7) => self.cmp(op.op1, op.op2, op.mode),
-                    _ => todo!()
+                match sub_op.code {
+                    0 => self.add(op.op1, op.op2, op.mode),
+                    1 => self.or(op.op1, op.op2, op.mode),
+                    2 => self.addc(op.op1, op.op2, op.mode),
+                    3 => self.subc(op.op1, op.op2, op.mode),
+                    4 => self.and(op.op1, op.op2, op.mode),
+                    5 => self.sub(op.op1, op.op2, op.mode),
+                    6 => self.xor(op.op1, op.op2, op.mode),
+                    7 => self.cmp(op.op1, op.op2, op.mode),
+                    _ => unreachable!(),
                 }
             }
+
+            // TEST
+            0x84 | 0x85 | 0xA8 | 0xA9 => self.test(op.op1, op.op2, op.mode),
 
             // XCH
             0x86 | 0x87 | 0x91..=0x97 => self.xch(op.mode, op.op1, op.op2),
@@ -196,6 +220,29 @@ impl V30MZ {
             // CVTWL
             0x99 => self.cvtwl(),
 
+            // Shift Group
+            0xC0 | 0xC1 | 0xD0..=0xD3 => {
+                self.expect_op_bytes(2);
+                let sub_op = &SHIFT_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
+                match sub_op.code {
+                    0 => self.rol(op.code, op.mode),
+                    1 => self.ror(op.code, op.mode),
+                    2 => self.rolc(op.code, op.mode),
+                    3 => self.rorc(op.code, op.mode),
+                    4 => self.shl(op.code, op.mode),
+                    5 => self.shr(op.code, op.mode),
+                    6 => todo!(),
+                    7 => self.shra(op.code, op.mode),
+                    _ => unreachable!()
+                }
+            }
+
+            // CVTBD
+            0xD4 => self.cvtbd(),
+
+            // CVTDB
+            0xD5 => self.cvtdb(),
+
             // SALC
             0xD6 => self.salc(),
 
@@ -208,12 +255,31 @@ impl V30MZ {
             // OUT
             0xE6 | 0xE7 | 0xEE | 0xEF => self.out_op(op.mode, op.op2),
 
+            // Group 1
+            0xF6 | 0xF7 => {
+                self.expect_op_bytes(2);
+                let sub_op = &GROUP_1[(self.current_op[1] & 0b0011_1000) as usize >> 3];
+                match sub_op.code {
+                    0 => self.test(op.op1, op.op2, op.mode),
+                    1 => todo!(),
+                    2 => self.not(op.mode),
+                    3 => self.neg(op.mode),
+                    4 => self.mulu(op.mode),
+                    5 => self.mul(op.op3, op.mode),
+                    6 => self.divu(op.mode),
+                    7 => self.div(op.mode),
+                    _ => todo!()
+                }
+            }
+
             // Group 2
             0xFE | 0xFF => {
                 self.expect_op_bytes(2);
                 let sub_op = &GROUP_2[(self.current_op[1] & 0b0011_1000) as usize >> 3];
-                match (op.code, sub_op.code) {
-                    (_, 6) => self.push_op(Operand::MEMORY),
+                match sub_op.code {
+                    0 => self.inc(op.op1, op.mode),
+                    1 => self.dec(op.op1, op.mode),
+                    6 => self.push_op(Operand::MEMORY),
                     _ => todo!()
                 }
             }

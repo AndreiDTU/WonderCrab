@@ -382,15 +382,29 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::AUX_CARRY);
     }
 
-    pub fn mulu(&mut self) {
-        self.expect_op_bytes(2);
-        let src = self.resolve_mem_src_16(self.current_op[1]) as u32;
-        let result = self.AW as u32 * src;
-        self.AW = result as u16;
-        self.DW = (result >> 16) as u16;
-        
-        self.PSW.set(CpuStatus::OVERFLOW, self.DW != 0);
-        self.PSW.set(CpuStatus::CARRY, self.DW != 0);
+    pub fn mulu(&mut self, mode: Mode) {
+        match mode {
+            Mode::M8 => {
+                self.expect_op_bytes(2);
+                let factor = self.resolve_mem_src_8(self.current_op[1]) as u16;
+                let result = self.AW as u8 as u16 * factor;
+                self.AW = result;
+                
+                self.PSW.set(CpuStatus::OVERFLOW, self.AW >> 8 != 0);
+                self.PSW.set(CpuStatus::CARRY, self.AW >> 8 != 0);
+            }
+            Mode::M16 => {
+                self.expect_op_bytes(2);
+                let src = self.resolve_mem_src_16(self.current_op[1]) as u32;
+                let result = self.AW as u32 * src;
+                self.AW = result as u16;
+                self.DW = (result >> 16) as u16;
+                
+                self.PSW.set(CpuStatus::OVERFLOW, self.DW != 0);
+                self.PSW.set(CpuStatus::CARRY, self.DW != 0);
+            }
+            _ => unreachable!()
+        }
         self.PSW.insert(CpuStatus::ZERO);
         self.PSW.remove(CpuStatus::SIGN);
         self.PSW.remove(CpuStatus::PARITY);
