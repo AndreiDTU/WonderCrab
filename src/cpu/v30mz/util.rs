@@ -3,6 +3,15 @@ use crate::cpu::parity;
 use super::*;
 
 impl V30MZ {
+    pub fn branch(&mut self, cond: bool) {
+        if cond {
+            let displacement = self.expect_extra_byte() as i8 as i16;
+            self.PC = self.PC.wrapping_add(self.pc_displacement);
+            self.pc_displacement = 0;
+            self.PC = (self.PC as i16).wrapping_add(displacement) as u16;
+        }
+    }
+
     pub fn expect_extra_byte(&mut self) -> u8 {
         self.expect_op_bytes(self.pc_displacement as usize + 1);
         *self.current_op.last().unwrap()

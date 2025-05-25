@@ -22,11 +22,44 @@ impl IOBusConnection for IOBus {
             return 0x90
         }
 
-        self.ports[port as usize]
+        match port {
+            // INT_CAUSE_CLEAR is write-only
+            0xB6 => {0}
+
+            // INT_NMI_CTRL clears most of its bits when read
+            0xB7 => {
+                self.ports[0xB7] &= 0x10;
+                self.ports[0xB7]
+            }
+
+            // Default no side-effects
+            _ => self.ports[port as usize]
+        }
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
-        self.ports[addr as usize] = byte
+        if addr & 0x0100 != 0 {
+            return;
+        }
+
+        let port = addr as u8;
+        if addr > 0xFF && port > 0xB8 {
+            return;
+        }
+
+        match port {
+            // INT_CAUSE is read-only
+            0xB4 => {}
+
+            // INT_CAUSE_CLEAR clears bits of INT_CAUSE when written to
+            0xB6 => {
+                self.ports[0xB6] = byte;
+                self.ports[0xB4] &= !self.ports[0xB6]
+            }
+
+            // Default no side-effects
+            _ => self.ports[port as usize] = byte
+        }
     }
 }
 

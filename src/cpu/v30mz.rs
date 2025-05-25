@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use bitflags::bitflags;
 
-use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}};
+use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}};
 
 use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_1, GROUP_2, IMMEDIATE_GROUP, SHIFT_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
@@ -10,6 +10,7 @@ mod util;
 mod mem_ops;
 mod alu_ops;
 mod bit_ops;
+mod ctrl_ops;
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
@@ -66,12 +67,12 @@ pub struct V30MZ {
 
     // PROGRAM
     pub current_op: Vec<u8>,
+    segment_override: Option<u16>,
+    halt: bool,
 
     // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
     io_bus: Rc<RefCell<IOBus>>,
-    
-    segment_override: Option<u16>,
 }
 
 impl MemBusConnection for V30MZ {
@@ -106,14 +107,15 @@ impl V30MZ {
             PSW: CpuStatus::from_bits_truncate(0xF022),
 
             current_op: Vec::with_capacity(8),
-            segment_override: None,
+            segment_override: None, halt: false,
 
             mem_bus: wram, io_bus: io,
         }
     }
 
     pub fn tick(&mut self) {
-        self.execute();
+        self.poll_interrupts();
+        if !self.halt {self.execute()}
     }
 
     pub fn execute(&mut self) {
@@ -124,6 +126,41 @@ impl V30MZ {
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
+            // PREFIXES
+
+            0x26 => {
+                self.segment_override = Some(self.DS1);
+                self.finish_prefix();
+                return;
+            }
+
+            0x2E => {
+                self.segment_override = Some(self.PS);
+                self.finish_prefix();
+                return;
+            }
+
+            0x36 => {
+                self.segment_override = Some(self.SS);
+                self.finish_prefix();
+                return;
+            }
+
+            0x3E => {
+                self.segment_override = Some(self.DS0);
+                self.finish_prefix();
+                return;
+            }
+
+            // BUSLOCK
+            0xF0 => {
+                self.mem_bus.borrow_mut().owner = Owner::CPU;
+                self.finish_prefix();
+                return;
+            }
+
+            // FULL INSTRUCTIONS
+
             // ADD
             0x00..=0x05 => self.add(op.op1, op.op2, op.mode),
 
@@ -173,8 +210,43 @@ impl V30MZ {
             // DEC
             0x48..=0x4F => self.dec(op.op1, op.mode),
 
+            // CHKIND
+            0x62 => self.chkind(),
+
             // MUL
             0x69 | 0x6B => self.mul(op.op3, op.mode),
+
+            // Branch ops
+            0x70 => self.branch(self.PSW.contains(CpuStatus::OVERFLOW)),
+            0x71 => self.branch(!self.PSW.contains(CpuStatus::OVERFLOW)),
+            0x72 => self.branch(self.PSW.contains(CpuStatus::CARRY)),
+            0x73 => self.branch(!self.PSW.contains(CpuStatus::CARRY)),
+            0x74 => self.branch(self.PSW.contains(CpuStatus::ZERO)),
+            0x75 => self.branch(!self.PSW.contains(CpuStatus::ZERO)),
+            0x76 => self.branch(self.PSW.contains(CpuStatus::ZERO) || self.PSW.contains(CpuStatus::ZERO)),
+            0x77 => self.branch(!(self.PSW.contains(CpuStatus::ZERO) || self.PSW.contains(CpuStatus::ZERO))),
+            0x78 => self.branch(self.PSW.contains(CpuStatus::SIGN)),
+            0x79 => self.branch(!self.PSW.contains(CpuStatus::SIGN)),
+            0x7A => self.branch(self.PSW.contains(CpuStatus::PARITY)),
+            0x7B => self.branch(!self.PSW.contains(CpuStatus::PARITY)),
+            0x7C => self.branch(self.PSW.contains(CpuStatus::SIGN) ^ self.PSW.contains(CpuStatus::OVERFLOW)),
+            0x7D => self.branch(!(self.PSW.contains(CpuStatus::SIGN) ^ self.PSW.contains(CpuStatus::OVERFLOW))),
+            0x7E => self.branch((self.PSW.contains(CpuStatus::SIGN) ^ self.PSW.contains(CpuStatus::OVERFLOW)) || self.PSW.contains(CpuStatus::ZERO)),
+            0x7F => self.branch(!((self.PSW.contains(CpuStatus::SIGN) ^ self.PSW.contains(CpuStatus::OVERFLOW)) || self.PSW.contains(CpuStatus::ZERO))),
+
+            0xE0 => {
+                self.CW = self.CW.wrapping_sub(1);
+                self.branch(self.CW != 0 && !self.PSW.contains(CpuStatus::ZERO));
+            }
+            0xE1 => {
+                self.CW = self.CW.wrapping_sub(1);
+                self.branch(self.CW != 0 && self.PSW.contains(CpuStatus::ZERO));
+            }
+            0xE2 => {
+                self.CW = self.CW.wrapping_sub(1);
+                self.branch(self.CW != 0);
+            }
+            0xE3 => self.branch(self.CW == 0),
 
             // Immediate Group
             0x80..=0x83 => {
@@ -214,6 +286,9 @@ impl V30MZ {
             // LDEA
             0x8D => self.ldea(),
 
+            // CALL
+            0x9A | 0x9B => self.call(op.op1, op.mode),
+
             // CVTBW
             0x98 => self.cvtbw(),
 
@@ -237,6 +312,27 @@ impl V30MZ {
                 }
             }
 
+            // RETN
+            0xC2 | 0xC3 => self.retn(op.op2),
+
+            // PREPARE
+            0xC8 => self.prepare(),
+
+            // DISPOSE
+            0xC9 => self.dispose(),
+
+            // RETF
+            0xCA | 0xCB => self.retf(op.op2),
+
+            // BRK
+            0xCC | 0xCD => self.brk(op.op2),
+
+            // BRKV
+            0xCE => self.brkv(),
+
+            // RETI
+            0xCF => self.reti(),
+
             // CVTBD
             0xD4 => self.cvtbd(),
 
@@ -249,11 +345,23 @@ impl V30MZ {
             // TRANS
             0xD7 => self.trans(),
 
+            // FPO1
+            0xD8..=0xDF => self.fpo1(),
+
             // IN
             0xE4 | 0xE5 | 0xEC | 0xED => self.in_op(op.mode, op.op2),
 
             // OUT
             0xE6 | 0xE7 | 0xEE | 0xEF => self.out_op(op.mode, op.op2),
+
+            // BR
+            0xE9..=0xEB => self.branch_op(op.op1, op.mode),
+
+            // HALT
+            0xF4 => self.halt = true,
+
+            // NOT1
+            0xF5 => self.PSW.toggle(CpuStatus::CARRY),
 
             // Group 1
             0xF6 | 0xF7 => {
@@ -268,9 +376,23 @@ impl V30MZ {
                     5 => self.mul(op.op3, op.mode),
                     6 => self.divu(op.mode),
                     7 => self.div(op.mode),
-                    _ => todo!()
+                    _ => unreachable!(),
                 }
             }
+
+            // CLR1
+            0xF8 => self.PSW.remove(CpuStatus::CARRY),
+            0xFC => self.PSW.remove(CpuStatus::DIRECTION),
+
+            // SET1
+            0xF9 => self.PSW.insert(CpuStatus::CARRY),
+            0xFD => self.PSW.insert(CpuStatus::DIRECTION),
+
+            // DI
+            0xFA => self.PSW.remove(CpuStatus::INTERRUPT),
+
+            // EI
+            0xFB => self.PSW.insert(CpuStatus::INTERRUPT),
 
             // Group 2
             0xFE | 0xFF => {
@@ -279,8 +401,13 @@ impl V30MZ {
                 match sub_op.code {
                     0 => self.inc(op.op1, op.mode),
                     1 => self.dec(op.op1, op.mode),
+                    2 => self.call(op.op1, op.mode),
+                    3 => self.call(op.op1, op.mode),
+                    4 => self.branch_op(op.op1, op.mode),
+                    5 => self.branch_op(op.op1, op.mode),
                     6 => self.push_op(Operand::MEMORY),
-                    _ => todo!()
+                    7 => todo!(),
+                    _ => unreachable!()
                 }
             }
                 
@@ -298,6 +425,15 @@ impl V30MZ {
         self.current_op.clear();
         self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
+        self.mem_bus.borrow_mut().owner = Owner::NONE;
+
+        if self.PSW.contains(CpuStatus::BREAK) {self.raise_exception(1)}
+    }
+
+    fn finish_prefix(&mut self) {
+        self.current_op.clear();
+        self.PC = self.PC.wrapping_add(self.pc_displacement);
+        self.pc_displacement = 0;
     }
 
     fn raise_exception(&mut self, vector: u8) {
@@ -310,5 +446,16 @@ impl V30MZ {
         self.push(self.PC);
 
         (self.PS, self.PC) = self.read_mem_32(vector as u32);
+    }
+
+    fn poll_interrupts(&mut self) {
+        let nmi = self.read_io(0xB7) != 0;
+        if self.read_io(0xB4) != 0 || nmi {
+            self.halt = false;
+            if (self.PSW.contains(CpuStatus::INTERRUPT)) || nmi {
+                let vector = self.read_io(0xB0);
+                self.raise_exception(vector);
+            }
+        }
     }
 }

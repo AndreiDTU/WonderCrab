@@ -225,7 +225,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
 
         OpCode::one_byte(0x98, "CVTBW",   Operand::NONE,        Operand::NONE,        Mode::M16),
         OpCode::one_byte(0x99, "CVTWL",   Operand::NONE,        Operand::NONE,        Mode::M16),
-        OpCode::one_byte(0x9A, "CALL",    Operand::NONE,        Operand::IMMEDIATE,   Mode::M32),
+        OpCode::one_byte(0x9A, "CALL",    Operand::IMMEDIATE,   Operand::NONE,        Mode::M32),
         OpCode::one_byte(0x9B, "POLL",    Operand::NONE,        Operand::NONE,        Mode::M16),
         OpCode::one_byte(0x9C, "PUSH",    Operand::NONE,        Operand::NONE,        Mode::M16),
         OpCode::one_byte(0x9D, "POP",     Operand::NONE,        Operand::NONE,        Mode::M16),
@@ -314,9 +314,9 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0xE7, "OUT",     Operand::IMMEDIATE,   Operand::ACCUMULATOR, Mode::M8 ),
         
         OpCode::one_byte(0xE8, "CALL",    Operand::NONE,        Operand::NONE,        Mode::M16),
-        OpCode::one_byte(0xE9, "BR",      Operand::NONE,        Operand::NONE,        Mode::M16),
-        OpCode::one_byte(0xEA, "BR",      Operand::NONE,        Operand::IMMEDIATE,   Mode::M32),
-        OpCode::one_byte(0xEB, "BR",      Operand::NONE,        Operand::IMMEDIATE_S, Mode::M8 ),
+        OpCode::one_byte(0xE9, "BR",      Operand::IMMEDIATE_S, Operand::NONE,        Mode::M16),
+        OpCode::one_byte(0xEA, "BR",      Operand::IMMEDIATE,   Operand::NONE,        Mode::M32),
+        OpCode::one_byte(0xEB, "BR",      Operand::IMMEDIATE_S, Operand::NONE,        Mode::M8 ),
         OpCode::one_byte(0xEC, "IN",      Operand::NONE,        Operand::NONE,        Mode::M8 ),
         OpCode::one_byte(0xED, "IN",      Operand::NONE,        Operand::NONE,        Mode::M16),
         OpCode::one_byte(0xEE, "OUT",     Operand::NONE,        Operand::NONE,        Mode::M16),
