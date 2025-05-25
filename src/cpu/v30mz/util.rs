@@ -59,6 +59,34 @@ impl V30MZ {
         self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) > 0xF);
     }
 
+    pub fn update_flags_bitwise_8(&mut self, res: u8) {
+        self.PSW.set(CpuStatus::ZERO, res == 0);
+        self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
+        self.PSW.remove(CpuStatus::OVERFLOW);
+        self.PSW.remove(CpuStatus::CARRY);
+        self.PSW.set(CpuStatus::PARITY, parity(res));
+
+    }
+
+    pub fn update_flags_bitwise_16(&mut self, res: u16) {
+        self.PSW.set(CpuStatus::ZERO, res == 0);
+        self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
+        self.PSW.remove(CpuStatus::OVERFLOW);
+        self.PSW.remove(CpuStatus::CARRY);
+        self.PSW.set(CpuStatus::PARITY, parity(res as u8));
+
+    }
+
+    pub fn get_rot_src(&mut self, code: u8) -> u8 {
+        // The src is always one byte
+        return match code & 0xFE {
+            0xC0 => self.expect_extra_byte(),
+            0xD0 => 1,
+            0xD2 => self.CW as u8,
+            _ => unreachable!(),
+        } & 0x1F
+    }
+
     pub fn push(&mut self, src: u16) {
         self.SP = self.SP.wrapping_sub(2);
         let addr = self.get_stack_address();
@@ -131,7 +159,7 @@ impl V30MZ {
             Operand::IMMEDIATE_S => {
                 self.expect_op_bytes(2);
 
-                self.current_op[1] as u16
+                self.current_op[1] as i8 as i16 as u16
             }
             Operand::NONE => panic!("None src not supported"),
         }

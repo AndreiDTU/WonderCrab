@@ -9,6 +9,7 @@ use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_2, IMMEDIATE_GROUP}, swap_h, sw
 mod util;
 mod mem_ops;
 mod alu_ops;
+mod bit_ops;
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
