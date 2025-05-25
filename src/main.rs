@@ -2,6 +2,8 @@ use soc::SoC;
 
 pub mod soc;
 
+pub mod bus;
+
 #[allow(non_snake_case)]
 pub mod cpu;
 

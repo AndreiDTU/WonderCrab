@@ -6,14 +6,14 @@ impl SoC {
     #[cfg(test)]
     pub fn set_wram(&mut self, wram: Vec<u8>) {
         for i in 0..wram.len() {
-            self.wram.borrow_mut()[i] = wram[i];
+            self.mem_bus.borrow_mut()[i] = wram[i];
         }
     }
 
     #[cfg(test)]
     pub fn set_io(&mut self, io: Vec<u8>) {
         for i in 0..io.len() {
-            self.io.borrow_mut()[i] = io[i];
+            self.io_bus.borrow_mut().write_io(i as u16, io[i]);
         }
     }
 
@@ -23,8 +23,8 @@ impl SoC {
     }
 
     #[cfg(test)]
-    pub fn get_wram(&mut self) -> Rc<RefCell<[u8; 0x10000]>> {
-        Rc::clone(&self.wram)
+    pub fn get_wram(&mut self) -> Rc<RefCell<MemBus>> {
+        Rc::clone(&self.mem_bus)
     }
     
 }

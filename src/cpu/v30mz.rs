@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use bitflags::bitflags;
 
-use crate::soc::{IOBus, MemBus};
+use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}};
 
 use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_2, IMMEDIATE_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
@@ -68,43 +68,34 @@ pub struct V30MZ {
     pub current_op: Vec<u8>,
 
     // MEMORY
-    wram: Rc<RefCell<[u8; 0x10000]>>,
-    io: Rc<RefCell<[u8; 0x0100]>>,
+    mem_bus: Rc<RefCell<MemBus>>,
+    io_bus: Rc<RefCell<IOBus>>,
     
     segment_override: Option<u16>,
 }
 
-impl MemBus for V30MZ {
+impl MemBusConnection for V30MZ {
     fn read_mem(&mut self, addr: u32) -> u8 {
-        self.wram.borrow()[addr as usize]
+        self.mem_bus.borrow_mut().read_mem(addr)
     }
 
-    fn write_mem(&mut self, addr: u32, data: u8) {
-        self.wram.borrow_mut()[addr as usize] = data
+    fn write_mem(&mut self, addr: u32, byte: u8) {
+        self.mem_bus.borrow_mut().write_mem(addr, byte);
     }
 }
 
-impl IOBus for V30MZ {
+impl IOBusConnection for V30MZ {
     fn read_io(&mut self, addr: u16) -> u8 {
-        if addr & 0x0100 != 0 {
-            return 0x90
-        }
-
-        let port = addr as u8;
-        if addr > 0xFF && port > 0xB8 {
-            return 0x90
-        }
-
-        self.io.borrow()[port as usize]
+        self.io_bus.borrow_mut().read_io(addr)
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
-        self.io.borrow_mut()[addr as usize] = byte
+        self.io_bus.borrow_mut().write_io(addr, byte);
     }
 }
 
 impl V30MZ {
-    pub fn new(wram: Rc<RefCell<[u8; 0x10000]>>, io: Rc<RefCell<[u8; 0x0100]>>) -> Self {
+    pub fn new(wram: Rc<RefCell<MemBus>>, io: Rc<RefCell<IOBus>>) -> Self {
         Self {
             AW: 0, BW: 0, CW: 0, DW: 0,
             DS0: 0, DS1: 0, PS: 0, SS: 0,
@@ -117,7 +108,7 @@ impl V30MZ {
             current_op: Vec::with_capacity(8),
             segment_override: None,
 
-            wram, io,
+            mem_bus: wram, io_bus: io,
         }
     }
 
