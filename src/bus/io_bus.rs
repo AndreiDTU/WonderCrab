@@ -1,5 +1,11 @@
+use std::{cell::RefCell, rc::Rc};
+
+use crate::cartridge::Cartridge;
+
 pub struct IOBus {
     ports: [u8; 0x100],
+
+    cartridge: Rc<RefCell<Cartridge>>,
 }
 
 pub trait IOBusConnection {
@@ -59,6 +65,19 @@ impl IOBusConnection for IOBus {
                 self.ports[0xB7]
             }
 
+            // CARTRIDGE PORTS
+            0xC0 => self.cartridge.borrow().read_linear_addr_off(),
+            0xC1 => self.cartridge.borrow().read_ram_bank(),
+            0xC2 => self.cartridge.borrow().read_rom_bank_0(),
+            0xC3 => self.cartridge.borrow().read_rom_bank_1(),
+            0xCF => self.cartridge.borrow().read_linear_addr_off_shadow(),
+            0xD0 => self.cartridge.borrow().read_ram_bank_l(),
+            0xD1 => self.cartridge.borrow().read_ram_bank_h(),
+            0xD2 => self.cartridge.borrow().read_rom_bank_0_l(),
+            0xD3 => self.cartridge.borrow().read_rom_bank_0_h(),
+            0xD4 => self.cartridge.borrow().read_rom_bank_1_l(),
+            0xD5 => self.cartridge.borrow().read_rom_bank_1_h(),
+
             // Default no side-effects
             _ => self.ports[port as usize]
         }
@@ -93,6 +112,19 @@ impl IOBusConnection for IOBus {
                 self.ports[0xB4] &= !self.ports[0xB6]
             }
 
+            // CARTRIDGE PORTS
+            0xC0 => self.cartridge.borrow_mut().write_linear_addr_off(byte),
+            0xC1 => self.cartridge.borrow_mut().write_ram_bank(byte),
+            0xC2 => self.cartridge.borrow_mut().write_rom_bank_0(byte),
+            0xC3 => self.cartridge.borrow_mut().write_rom_bank_1(byte),
+            0xCF => {}
+            0xD0 => self.cartridge.borrow_mut().write_ram_bank_l(byte),
+            0xD1 => self.cartridge.borrow_mut().write_ram_bank_h(byte),
+            0xD2 => self.cartridge.borrow_mut().write_rom_bank_0_l(byte),
+            0xD3 => self.cartridge.borrow_mut().write_rom_bank_0_h(byte),
+            0xD4 => self.cartridge.borrow_mut().write_rom_bank_1_l(byte),
+            0xD5 => self.cartridge.borrow_mut().write_rom_bank_1_h(byte),
+
             // Default no side-effects
             _ => self.ports[port as usize] = byte
         }
@@ -100,15 +132,19 @@ impl IOBusConnection for IOBus {
 }
 
 impl IOBus {
-    pub fn new() -> Self {
-        Self {ports: [0; 0x100]}
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
+        Self {ports: [0; 0x100], cartridge}
     }
 
     pub fn color_mode(&mut self) -> bool {
         self.read_io(0x60) >> 7 != 0
     }
 
-    pub fn open_bus(&self) -> u8 {
+    pub fn color_setup(&mut self) {
+        self.ports[0x60] = 0x80;
+    }
+
+    pub fn open_bus() -> u8 {
         0x90
     }
 }

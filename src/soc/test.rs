@@ -4,8 +4,9 @@ use super::*;
 
 impl SoC {
     pub fn test_build() -> Self {
-        let io_bus = Rc::new(RefCell::new(IOBus::new()));
-        let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus))));
+        let cartridge = Rc::new(RefCell::new(Cartridge::test_build()));
+        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge))));
+        let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 

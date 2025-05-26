@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::cartridge::{Cartridge, Mapper};
+use crate::cartridge::Cartridge;
 
 use super::io_bus::{IOBus, IOBusConnection};
 
@@ -16,7 +16,7 @@ pub struct MemBus {
 
     pub wram: [u8; 0x10000],
 
-    pub cartridge: Cartridge,
+    pub cartridge: Rc<RefCell<Cartridge>>,
 
     pub io_bus: Rc<RefCell<IOBus>>,
 }
@@ -56,7 +56,11 @@ impl MemBusConnection for MemBus {
                     0x90
                 }
             }
-            addr => panic!("Not yet implemented! Addr: {:05X}", addr)
+            0x10000..=0x1FFFF => self.cartridge.borrow().read_sram(addr),
+            0x20000..=0x2FFFF => self.cartridge.borrow().read_rom_0(addr),
+            0x30000..=0x3FFFF => self.cartridge.borrow().read_rom_1(addr),
+            0x40000..=0xFFFFF => self.cartridge.borrow().read_rom_ex(addr),
+            addr => panic!("Address {:08X} out of range!", addr)
         }
     }
 
@@ -64,7 +68,11 @@ impl MemBusConnection for MemBus {
         match addr {
             0x00000..=0x01FFF => self.wram[addr as usize] = byte,
             0x02000..=0x0FFFF => if self.io_bus.borrow_mut().color_mode() {self.wram[addr as usize] = byte}
-            _ => todo!()
+            0x10000..=0x1FFFF => self.cartridge.borrow_mut().write_sram(addr, byte),
+            0x20000..=0x2FFFF => self.cartridge.borrow_mut().write_rom_1(addr, byte),
+            0x30000..=0x3FFFF => self.cartridge.borrow_mut().write_rom_1(addr, byte),
+            0x40000..=0xFFFFF => self.cartridge.borrow_mut().write_rom_ex(addr, byte),
+            addr => panic!("Address {:08X} out of range! Attempting to write {:02X}", addr, byte),
         }
     }
 }
@@ -80,15 +88,13 @@ impl IOBusConnection for MemBus {
 }
 
 impl MemBus {
-    pub fn new(io_bus: Rc<RefCell<IOBus>>, sram: Vec<u8>, rom: Vec<u8>, mapper: Mapper, rewrittable: bool) -> Self {
-        let cartridge_io = Rc::clone(&io_bus);
-        Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge: Cartridge::new(cartridge_io, mapper, sram, rom, rewrittable)}
+    pub fn new(io_bus: Rc<RefCell<IOBus>>, cartridge: Rc<RefCell<Cartridge>>) -> Self {
+        Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge}
     }
 
     #[cfg(test)]
-    pub fn test_build(io_bus: Rc<RefCell<IOBus>>) -> Self {
-        let cartridge_io = Rc::clone(&io_bus);
-        Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge: Cartridge::test_build(cartridge_io)}
+    pub fn test_build(io_bus: Rc<RefCell<IOBus>>, cartridge: Rc<RefCell<Cartridge>>) -> Self {
+        Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge}
     }
 }
 

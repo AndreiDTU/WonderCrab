@@ -1,8 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
-
-use crate::bus::io_bus::{IOBus, IOBusConnection};
-
-pub mod bank_access;
+pub mod cart_ports;
 
 pub enum Mapper {
     B_2001,
@@ -13,8 +9,6 @@ pub struct Cartridge {
     sram: Vec<u8>,
     rom: Vec<u8>,
 
-    io_bus: Rc<RefCell<IOBus>>,
-
     mapper: Mapper,
 
     RAM_BANK_L: u8,
@@ -24,27 +18,19 @@ pub struct Cartridge {
     ROM_BANK_0_H: u8,
     ROM_BANK_1_L: u8,
     ROM_BANK_1_H: u8,
+    LINEAR_ADDR_OFF: u8,
 
     rewrittable: bool,
 }
 
-impl IOBusConnection for Cartridge {
-    fn read_io(&mut self, addr: u16) -> u8 {
-        self.io_bus.borrow_mut().read_io(addr)
-    }
-
-    fn write_io(&mut self, addr: u16, byte: u8) {
-        self.io_bus.borrow_mut().write_io(addr, byte);
-    }
-}
-
 impl Cartridge {
-    pub fn new(io_bus: Rc<RefCell<IOBus>>, mapper: Mapper, sram: Vec<u8>, rom: Vec<u8>, rewrittable: bool) -> Self {
+    pub fn new(mapper: Mapper, sram: Vec<u8>, rom: Vec<u8>, rewrittable: bool) -> Self {
         Self {
-            sram, rom, io_bus, mapper,
+            sram, rom, mapper,
             RAM_BANK_L: 0xFF, RAM_BANK_H: 0xFF,
             ROM_BANK_0_L: 0xFF, ROM_BANK_0_H: 0xFF,
             ROM_BANK_1_L: 0xFF, ROM_BANK_1_H: 0xFF,
+            LINEAR_ADDR_OFF: 0xFF,
             rewrittable,
         }
     }
@@ -99,8 +85,46 @@ impl Cartridge {
         self.rom[offset as usize]
     }
 
+    pub fn read_rom_ex(&self, addr: u32) -> u8 {
+        let hi = (self.LINEAR_ADDR_OFF as u32) << 20;
+        let offset = hi | addr;
+
+        self.rom[offset as usize]
+    }
+
+    pub fn write_rom_0(&mut self, addr: u32, byte: u8) {
+        let hi = match self.mapper {
+            Mapper::B_2001 => self.ROM_BANK_0_L as u32,
+            Mapper::B_2003 => u16::from_le_bytes([self.ROM_BANK_0_L, self.ROM_BANK_0_H]) as u32,
+        };
+        let lo = addr & 0xFFFF;
+
+        let offset = (hi << 16) | lo;
+
+        self.rom[offset as usize] = byte;
+    }
+
+    pub fn write_rom_1(&mut self, addr: u32, byte: u8) {
+        let hi = match self.mapper {
+            Mapper::B_2001 => self.ROM_BANK_1_L as u32,
+            Mapper::B_2003 => u16::from_le_bytes([self.ROM_BANK_1_L, self.ROM_BANK_1_H]) as u32,
+        };
+        let lo = addr & 0xFFFF;
+
+        let offset = (hi << 16) | lo;
+
+        self.rom[offset as usize] = byte;
+    }
+
+    pub fn write_rom_ex(&mut self, addr: u32, byte: u8) {
+        let hi = (self.LINEAR_ADDR_OFF as u32) << 20;
+        let offset = hi | addr;
+
+        self.rom[offset as usize] = byte;
+    }
+
     #[cfg(test)]
-    pub fn test_build(io_bus: Rc<RefCell<IOBus>>) -> Self {
-        Self::new(io_bus, Mapper::B_2001, Vec::new(), Vec::new(), true)
+    pub fn test_build() -> Self {
+        Self::new(Mapper::B_2001, Vec::new(), Vec::new(), true)
     }
 }

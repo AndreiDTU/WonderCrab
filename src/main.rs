@@ -1,5 +1,3 @@
-use std::cmp::min;
-
 use cartridge::Mapper;
 use soc::SoC;
 
@@ -15,8 +13,8 @@ pub mod cartridge;
 pub mod cpu;
 
 fn main() {
-    let (_color, sram, rom, mapper, rewrittable) = parse_rom("klonoa");
-    let mut soc = SoC::new(sram, rom, mapper, rewrittable);
+    let (color, sram, rom, mapper, rewrittable) = parse_rom("klonoa");
+    let mut soc = SoC::new(color, sram, rom, mapper, rewrittable);
     soc.tick();
 }
 
