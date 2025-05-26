@@ -1,2 +1,4 @@
 /target
 lcov.info
+*.ws
+*.wsc

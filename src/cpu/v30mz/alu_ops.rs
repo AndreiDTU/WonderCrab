@@ -535,7 +535,7 @@ mod test {
 
     #[test]
     fn test_0x00_add_register_to_memory_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x00, 0x06, 0xFE, 0x00, // [0x00FE] <- [0x00FE] + AL
         ]);
@@ -550,7 +550,7 @@ mod test {
 
     #[test]
     fn test_0x01_add_register_to_memory_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x01, 0x06, 0xFE, 0x00, // [0x00FE] <- [0x00FE] + AW
         ]);
@@ -568,7 +568,7 @@ mod test {
 
     #[test]
     fn test_0x02_add_memory_to_register_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x02, 0x06, 0xFE, 0x00,
         ]);
@@ -584,7 +584,7 @@ mod test {
 
     #[test]
     fn test_0x03_add_memory_to_register_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x03, 0x06, 0xFE, 0x00,
         ]);
@@ -601,7 +601,7 @@ mod test {
 
     #[test]
     fn test_0x04_add_immediate_to_accumulator_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x04, 0xFF,
         ]);
@@ -618,7 +618,7 @@ mod test {
 
     #[test]
     fn test_0x05_add_immediate_to_accumulator_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x05, 0xFF, 0xFF
         ]);
@@ -635,7 +635,7 @@ mod test {
 
     #[test]
     fn test_0x10_addc_register_to_memory_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x10, 0x06, 0xFE, 0x00, // [0x00FE] <- [0x00FE] + AL + carry
         ]);
@@ -651,7 +651,7 @@ mod test {
 
     #[test]
     fn test_0x11_addc_register_to_memory_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x11, 0x06, 0xFE, 0x00, // [0x00FE] <- [0x00FE] + AW + carry
         ]);
@@ -670,7 +670,7 @@ mod test {
 
     #[test]
     fn test_0x12_addc_memory_to_register_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x12, 0x06, 0xFE, 0x00,
         ]);
@@ -687,7 +687,7 @@ mod test {
 
     #[test]
     fn test_0x13_addc_memory_to_register_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x13, 0x06, 0xFE, 0x00,
         ]);
@@ -705,7 +705,7 @@ mod test {
 
     #[test]
     fn test_0x14_addc_immediate_to_accumulator_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x14, 0xFF,
         ]);
@@ -722,7 +722,7 @@ mod test {
 
     #[test]
     fn test_0x15_addc_immediate_to_accumulator_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x15, 0xFF, 0xFF
         ]);

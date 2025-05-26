@@ -107,4 +107,8 @@ impl IOBus {
     pub fn color_mode(&mut self) -> bool {
         self.read_io(0x60) >> 7 != 0
     }
+
+    pub fn open_bus(&self) -> u8 {
+        0x90
+    }
 }

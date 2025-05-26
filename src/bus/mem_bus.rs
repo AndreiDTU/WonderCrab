@@ -1,5 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crate::cartridge::{Cartridge, Mapper};
+
 use super::io_bus::{IOBus, IOBusConnection};
 
 #[derive(PartialEq, Eq)]
@@ -13,6 +15,8 @@ pub struct MemBus {
     pub owner: Owner,
 
     pub wram: [u8; 0x10000],
+
+    pub cartridge: Cartridge,
 
     pub io_bus: Rc<RefCell<IOBus>>,
 }
@@ -76,8 +80,15 @@ impl IOBusConnection for MemBus {
 }
 
 impl MemBus {
-    pub fn new(io_bus: Rc<RefCell<IOBus>>) -> Self {
-        Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus}
+    pub fn new(io_bus: Rc<RefCell<IOBus>>, sram: Vec<u8>, rom: Vec<u8>, mapper: Mapper, rewrittable: bool) -> Self {
+        let cartridge_io = Rc::clone(&io_bus);
+        Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge: Cartridge::new(cartridge_io, mapper, sram, rom, rewrittable)}
+    }
+
+    #[cfg(test)]
+    pub fn test_build(io_bus: Rc<RefCell<IOBus>>) -> Self {
+        let cartridge_io = Rc::clone(&io_bus);
+        Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge: Cartridge::test_build(cartridge_io)}
     }
 }
 

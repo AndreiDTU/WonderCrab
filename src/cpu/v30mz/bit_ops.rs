@@ -363,7 +363,7 @@ mod test {
     
     #[test]
     fn test_0x08_or_memory_register_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x08, 0xC1, // CL <- AL & CL
         ]);
@@ -376,7 +376,7 @@ mod test {
 
     #[test]
     fn test_0x09_and_memory_register_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x09, 0xC1, // CW <- AW & CW
         ]);
@@ -389,7 +389,7 @@ mod test {
     
     #[test]
     fn test_0x20_and_memory_register_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x20, 0xC1, // CL <- AL & CL
         ]);
@@ -402,7 +402,7 @@ mod test {
 
     #[test]
     fn test_0x21_and_memory_register_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x21, 0xC1, // CW <- AW & CW
         ]);
@@ -415,7 +415,7 @@ mod test {
 
     #[test]
     fn test_0xc0_2_rolc_mem_imm_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xC0, 0xD0, 0x01,
         ]);
@@ -428,7 +428,7 @@ mod test {
 
     #[test]
     fn test_0xc1_2_rolc_mem_imm_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xC1, 0xD0, 0x01,
         ]);
@@ -441,7 +441,7 @@ mod test {
 
     #[test]
     fn test_0xc0_3_rorc_mem_imm_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xC0, 0xD8, 0x01,
         ]);
@@ -454,7 +454,7 @@ mod test {
 
     #[test]
     fn test_0xc1_3_rorc_mem_imm_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xC1, 0xD8, 0x01,
         ]);
@@ -467,7 +467,7 @@ mod test {
 
     #[test]
     fn test_0xc0_4_shl_mem_imm_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xC0, 0xE0, 0x01,
         ]);
@@ -480,7 +480,7 @@ mod test {
 
     #[test]
     fn test_0xc1_4_shl_mem_imm_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xC1, 0xE0, 0x01,
         ]);
@@ -493,7 +493,7 @@ mod test {
 
     #[test]
     fn test_0xd0_0_rol_1_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xD0, 0xC0,
         ]);
@@ -505,7 +505,7 @@ mod test {
 
     #[test]
     fn test_0xd1_0_rol_1_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xD1, 0xC0,
         ]);
@@ -517,7 +517,7 @@ mod test {
 
     #[test]
     fn test_0xd0_1_ror_1_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xD0, 0xC8,
         ]);
@@ -529,7 +529,7 @@ mod test {
 
     #[test]
     fn test_0xd1_1_ror_1_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xD1, 0xC8,
         ]);
@@ -541,7 +541,7 @@ mod test {
 
     #[test]
     fn test_0xf6_2_not_8() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xF6, 0xD0,
         ]);
@@ -553,7 +553,7 @@ mod test {
 
     #[test]
     fn test_0xf7_2_not_16() {
-        let mut soc = SoC::new();
+        let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xF7, 0xD0,
         ]);

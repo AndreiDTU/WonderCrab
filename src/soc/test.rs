@@ -3,6 +3,15 @@ use crate::assert_eq_hex;
 use super::*;
 
 impl SoC {
+    pub fn test_build() -> Self {
+        let io_bus = Rc::new(RefCell::new(IOBus::new()));
+        let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus))));
+        let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+
+        Self {cpu, dma, mem_bus, io_bus}
+    }
+
     pub fn set_wram(&mut self, wram: Vec<u8>) {
         for i in 0..wram.len() {
             self.mem_bus.borrow_mut()[i] = wram[i];
@@ -31,7 +40,7 @@ impl SoC {
 
 #[test]
 fn test_io_open_bus() {
-    let mut soc = SoC::new();
+    let mut soc = SoC::test_build();
     assert_eq_hex!(soc.read_io(0x100), 0x90);
     assert_eq_hex!(soc.read_io(0x1B9), 0x90);
 }
