@@ -3,7 +3,7 @@ use crate::{bus::{io_bus::IOBusConnection, mem_bus::MemBusConnection}, cpu::{swa
 use super::{CpuStatus, V30MZ};
 
 impl V30MZ {
-    pub fn cmpbk(&mut self, mode: Mode) {
+    pub fn cmpbk(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr_x = self.get_physical_address(self.IX, self.DS0);
         let addr_y = self.apply_segment(self.IY, self.DS1);
         match mode {
@@ -25,9 +25,20 @@ impl V30MZ {
         self.IY = self.update_block_index(mode, self.IY);
 
         self.rep = self.PSW.contains(CpuStatus::ZERO) == self.rep_z;
+
+        self.base = if self.rep {
+            if self.rep_z {
+                rep_cycles + 1
+            } else {
+                rep_cycles
+            }
+        } else {
+            cycles
+        };
+        self.cycles = self.base;
     }
 
-    pub fn cmpm(&mut self, mode: Mode) {
+    pub fn cmpm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.apply_segment(self.IY, self.DS1);
         match mode {
             Mode::M8 => {
@@ -46,9 +57,12 @@ impl V30MZ {
         self.IY = self.update_block_index(mode, self.IY);
 
         self.rep = self.PSW.contains(CpuStatus::ZERO) == self.rep_z;
+
+        self.base = if self.rep {rep_cycles} else {cycles};
+        self.cycles = self.base;
     }
 
-    pub fn inm(&mut self, mode: Mode) {
+    pub fn inm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.apply_segment(self.IY, self.DS1);
         match mode {
             Mode::M8 => {
@@ -63,9 +77,12 @@ impl V30MZ {
             _ => unreachable!()
         }
         self.IY = self.update_block_index(mode, self.IY);
+
+        self.base = if self.rep {rep_cycles} else {cycles};
+        self.cycles = self.base;
     }
 
-    pub fn ldm(&mut self, mode: Mode) {
+    pub fn ldm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.get_physical_address(self.IX, self.DS0);
         match mode {
             Mode::M8 => {
@@ -76,9 +93,12 @@ impl V30MZ {
             _ => unreachable!()
         }
         self.IX = self.update_block_index(mode, self.IX);
+
+        self.base = if self.rep {rep_cycles} else {cycles};
+        self.cycles = self.base;
     }
 
-    pub fn movbk(&mut self, mode: Mode) {
+    pub fn movbk(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr_x = self.get_physical_address(self.IX, self.DS0);
         let addr_y = self.apply_segment(self.IY, self.DS1);
         match mode {
@@ -94,9 +114,12 @@ impl V30MZ {
         }
         self.IX = self.update_block_index(mode, self.IX);
         self.IY = self.update_block_index(mode, self.IY);
+
+        self.base = if self.rep {rep_cycles} else {cycles};
+        self.cycles = self.base;
     }
 
-    pub fn outm(&mut self, mode: Mode) {
+    pub fn outm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.get_physical_address(self.IX, self.DS0);
         match mode {
             Mode::M8 => {
@@ -111,9 +134,12 @@ impl V30MZ {
             _ => unreachable!()
         }
         self.IX = self.update_block_index(mode, self.IX);
+
+        self.base = if self.rep {rep_cycles} else {cycles};
+        self.cycles = self.base;
     }
 
-    pub fn stm(&mut self, mode: Mode) {
+    pub fn stm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.apply_segment(self.IY, self.DS1);
         match mode {
             Mode::M8 => self.write_mem(addr, self.AW as u8),
@@ -121,6 +147,9 @@ impl V30MZ {
             _ => unreachable!()
         }
         self.IY = self.update_block_index(mode, self.IY);
+
+        self.base = if self.rep {rep_cycles} else {cycles};
+        self.cycles = self.base;
     }
 
     fn update_block_index(&mut self, mode: Mode, index: u16) -> u16 {

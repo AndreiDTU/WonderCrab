@@ -78,7 +78,7 @@ impl V30MZ {
             for _ in 0..(imm5 - 1) {
                 self.BP = self.BP.wrapping_sub(2);
                 let addr = self.get_physical_address(self.BP, self.SS);
-                let word = self.mem_bus.borrow_mut().read_mem_16(addr);
+                let word = self.read_mem_16(addr);
                 self.push(word);
             }
         }

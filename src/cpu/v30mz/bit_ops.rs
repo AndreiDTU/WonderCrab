@@ -370,7 +370,7 @@ mod test {
         soc.get_cpu().AW = 0xFE;
         soc.get_cpu().CW = 0xEF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xFF);
     }
 
@@ -383,7 +383,7 @@ mod test {
         soc.get_cpu().AW = 0xFFEE;
         soc.get_cpu().CW = 0xEEFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xFFFF);
     }
     
@@ -396,7 +396,7 @@ mod test {
         soc.get_cpu().AW = 0xFE;
         soc.get_cpu().CW = 0xEF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xEE);
     }
 
@@ -409,7 +409,7 @@ mod test {
         soc.get_cpu().AW = 0xFFEE;
         soc.get_cpu().CW = 0xEEFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xEEEE);
     }
 
@@ -421,7 +421,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -434,7 +434,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -447,7 +447,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x7F);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -460,7 +460,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x7FFF);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -473,7 +473,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -486,7 +486,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -499,7 +499,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFD);
     }
 
@@ -511,7 +511,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFD);
     }
 
@@ -523,7 +523,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0x7F;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xBF);
     }
 
@@ -535,7 +535,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0x7FFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xBFFF);
     }
 
@@ -547,7 +547,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x01);
     }
 
@@ -559,7 +559,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x0001);
     }
 }

@@ -1,10 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}}, cpu::v30mz::V30MZ};
+use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}}, cpu::v30mz::V30MZ, dma::DMA};
 
 pub struct SoC {
     // COMPONENTS
     cpu: V30MZ,
+    dma: DMA,
 
     // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
@@ -38,12 +39,21 @@ impl SoC {
         let io_bus = Rc::new(RefCell::new(IOBus::new()));
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus))));
         let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 
-        Self {cpu, mem_bus, io_bus}
+        Self {cpu, dma, mem_bus, io_bus}
     }
 
     pub fn tick(&mut self) {
-        self.cpu.tick();
+        if self.dma.is_enabled() {
+            self.dma.start_op();
+        }
+
+        if self.dma.cycles > 0 {
+            self.dma.tick();
+        } else {
+            self.cpu.tick();
+        }
     }
 }
 

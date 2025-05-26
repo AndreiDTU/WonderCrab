@@ -23,7 +23,7 @@ impl SoC {
         Rc::clone(&self.mem_bus)
     }
 
-    pub fn tick_ignore_cycles(&mut self) {
+    pub fn tick_cpu_no_cycles(&mut self) {
         self.cpu.tick_ignore_cycles();
     }
     

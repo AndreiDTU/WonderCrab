@@ -105,7 +105,7 @@ impl IOBusConnection for V30MZ {
 }
 
 impl V30MZ {
-    pub fn new(wram: Rc<RefCell<MemBus>>, io: Rc<RefCell<IOBus>>) -> Self {
+    pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
         Self {
             AW: 0, BW: 0, CW: 0, DW: 0,
             DS0: 0, DS1: 0, PS: 0, SS: 0,
@@ -119,7 +119,7 @@ impl V30MZ {
             segment_override: None,
             halt: false, rep: false, rep_z: false,
 
-            mem_bus: wram, io_bus: io,
+            mem_bus, io_bus,
             mem_buffer: HashMap::new(),
             io_buffer: HashMap::new(),
 
@@ -258,10 +258,10 @@ impl V30MZ {
             0x69 | 0x6B => self.mul(op.op3, op.mode, op.extra),
 
             // INM
-            0x6C | 0x6D => self.inm(op.mode),
+            0x6C | 0x6D => self.inm(op.mode, op.cycles, op.extra),
 
             // OUTM
-            0x6E | 0x6F => self.outm(op.mode),
+            0x6E | 0x6F => self.outm(op.mode, op.cycles, op.extra),
 
             // Branch ops
             0x70 => self.branch(self.PSW.contains(CpuStatus::OVERFLOW)),
@@ -345,19 +345,19 @@ impl V30MZ {
             0x99 => self.cvtwl(),
 
             // MOVBK
-            0xA4 | 0xA5 => self.movbk(op.mode),
+            0xA4 | 0xA5 => self.movbk(op.mode, op.cycles, op.extra),
 
             // CMPBK
-            0xA6 | 0xA7 => self.cmpbk(op.mode),
+            0xA6 | 0xA7 => self.cmpbk(op.mode, op.cycles, op.extra),
 
             // STM
-            0xAA | 0xAB => self.stm(op.mode),
+            0xAA | 0xAB => self.stm(op.mode, op.cycles, op.extra),
 
             // LDM
-            0xAC | 0xAD => self.ldm(op.mode),
+            0xAC | 0xAD => self.ldm(op.mode, op.cycles, op.extra),
 
             // CMPM
-            0xAE | 0xAF => self.cmpm(op.mode),
+            0xAE | 0xAF => self.cmpm(op.mode, op.cycles, op.extra),
 
             // Shift Group
             0xC0 | 0xC1 | 0xD0..=0xD3 => {

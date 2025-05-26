@@ -262,10 +262,10 @@ mod test {
 
         soc.get_cpu().DS1 = 0x1234;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().SP, 0x1000);
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.read_mem_16(addr), 0x1234);
@@ -312,48 +312,48 @@ mod test {
         ]);
 
         for _ in 0..8 {
-            soc.tick_ignore_cycles();
+            soc.tick_cpu_no_cycles();
         }
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().SP.wrapping_add(2));
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().AW);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().CW);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().DW);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().BW);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().BP);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().IX);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().IY);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, soc.get_cpu().IY);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().CW, soc.get_cpu().IX);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().DW, soc.get_cpu().BP);
     }
 
@@ -368,15 +368,15 @@ mod test {
         soc.get_cpu().AW = 0x1234;
         soc.get_cpu().IX = 0xFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().CW, 0x0034);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x34);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
     }
@@ -392,16 +392,16 @@ mod test {
         soc.get_cpu().AW = 0x1234;
         soc.get_cpu().IX = 0xFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().CW, 0x1234);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0x12);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x12);
@@ -420,15 +420,15 @@ mod test {
         soc.get_wram().borrow_mut()[0x00FF] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FE] = 0x12;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x0034);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x00FF);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_cpu().AW, 0x0012);
     }
@@ -447,15 +447,15 @@ mod test {
         soc.get_wram().borrow_mut()[0x0100] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FE] = 0x12;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFF);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_cpu().AW, 0xFF12);
     }
@@ -471,16 +471,16 @@ mod test {
         soc.get_cpu().DS1 = 0x1234;
         soc.get_cpu().IX = 0xFF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().CW, 0x1234);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0x12);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x12);
@@ -502,25 +502,25 @@ mod test {
         soc.get_cpu().BW = 0x5678;
         soc.get_cpu().IX = 0x1111;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0006);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0009);
         assert_eq_hex!(soc.get_cpu().AW, 0x679A);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x6788);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x789A);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x6788);
     }
 
@@ -538,15 +538,15 @@ mod test {
         soc.get_wram().borrow_mut()[0x0100] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FE] = 0x12;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().DS1, 0x1234);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().DS1, 0xFFFF);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_cpu().DS1, 0xFF12);
     }
@@ -557,12 +557,12 @@ mod test {
         
         soc.get_cpu().AW = 0x00FF;
         soc.get_cpu().current_op = vec![0x98];
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFF);
 
         soc.get_cpu().AW = 0xFF00;
         soc.get_cpu().current_op = vec![0x98];
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x0000);
     }
 
@@ -572,12 +572,12 @@ mod test {
 
         soc.get_cpu().AW = 0x8000;
         soc.get_cpu().current_op = vec![0x99];
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().DW, 0xFFFF);
 
         soc.get_cpu().AW = 0x7FFF;
         soc.get_cpu().current_op = vec![0x99];
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().DW, 0x0000);
     }
 
@@ -589,7 +589,7 @@ mod test {
         ]);
 
         soc.get_cpu().AW = 0x55_00;
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0001);
         assert_eq_hex!(soc.get_cpu().PSW.bits() & 0xFF, 0x55);
     }
@@ -602,7 +602,7 @@ mod test {
         ]);
 
         soc.get_cpu().PSW = CpuStatus::from_bits_truncate(0b1010_1010);
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0001);
         assert_eq_hex!(soc.get_cpu().AW >> 8, 0xAA);
     }
@@ -618,7 +618,7 @@ mod test {
         soc.get_cpu().AW = 0x0000;
         soc.get_wram().borrow_mut()[0x1234] = 0xAB;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0x00AB);
     }
@@ -635,7 +635,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x1234] = 0xCD;
         soc.get_wram().borrow_mut()[0x1235] = 0xAB;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
     }
@@ -650,7 +650,7 @@ mod test {
         soc.get_cpu().DS0 = 0x0000;
         soc.get_cpu().AW = 0x00FE;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_wram().borrow()[0x1234], 0xFE);
     }
@@ -665,7 +665,7 @@ mod test {
         soc.get_cpu().DS0 = 0x0000;
         soc.get_cpu().AW = 0xBEEF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_wram().borrow()[0x1234], 0xEF);
         assert_eq_hex!(soc.get_wram().borrow()[0x1235], 0xBE);
@@ -678,7 +678,7 @@ mod test {
             0xB0, 0x12, // AL <- 0x12
         ]);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x0012);
     }
@@ -690,7 +690,7 @@ mod test {
             0xB8, 0x34, 0x12, // AW <- 0x1234
         ]);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
     }
@@ -706,7 +706,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x0102] = 0x78;
         soc.get_wram().borrow_mut()[0x0103] = 0x56;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
         assert_eq_hex!(soc.get_cpu().DS1, 0x5678);
@@ -723,7 +723,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x0102] = 0x78;
         soc.get_wram().borrow_mut()[0x0103] = 0x56;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
         assert_eq_hex!(soc.get_cpu().DS0, 0x5678);
@@ -736,7 +736,7 @@ mod test {
             0xC6, 0x06, 0x00, 0x01, 0xAB, // WRAM[0x0100] <- 0xAB
         ]);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0005);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0xAB);
     }
@@ -748,7 +748,7 @@ mod test {
             0xC7, 0x06, 0x00, 0x01, 0x34, 0x12, // WRAM[0x0100] <- 0x1234
         ]);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0006);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x0101], 0x12);
@@ -760,11 +760,11 @@ mod test {
         soc.set_wram(vec![0xD6, 0xD6]);
 
         soc.get_cpu().PSW.insert(CpuStatus::CARRY);
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x00FF);
         
         soc.get_cpu().PSW.remove(CpuStatus::CARRY);
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x0000);
     }
 
@@ -773,7 +773,7 @@ mod test {
         let mut soc = SoC::new();
         soc.set_wram(vec![0xE4, 0x00]);
         soc.set_io(vec![0xCD, 0xAB]);
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x00CD);
     }
 
@@ -782,7 +782,7 @@ mod test {
         let mut soc = SoC::new();
         soc.set_wram(vec![0xE5, 0x00]);
         soc.set_io(vec![0xCD, 0xAB]);
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
     }
 
@@ -792,7 +792,7 @@ mod test {
         soc.set_wram(vec![0xEC, 0xFF]);
         soc.set_io(vec![0xCD, 0xAB]);
         soc.get_cpu().DW = 0x00;
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x00CD);
     }
 
@@ -802,7 +802,7 @@ mod test {
         soc.set_wram(vec![0xED, 0xFF]);
         soc.set_io(vec![0xCD, 0xAB]);
         soc.get_cpu().DW = 0x00;
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
     }
 }

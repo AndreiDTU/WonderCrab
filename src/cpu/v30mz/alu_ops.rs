@@ -542,7 +542,7 @@ mod test {
         soc.get_cpu().AW = 0x1234;
         soc.get_wram().borrow_mut()[0x00FE] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x35);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::PARITY));
@@ -558,7 +558,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x00FE] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FF] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x33);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x14);
@@ -575,7 +575,7 @@ mod test {
         soc.get_cpu().AW = 0x1234;
         soc.get_wram().borrow_mut()[0x00FE] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1235);
         assert!(!soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
@@ -592,7 +592,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x00FE] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FF] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1433);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
@@ -607,7 +607,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0x12FF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x12FE);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
@@ -624,7 +624,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0x12FF;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0x12FE);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
@@ -643,7 +643,7 @@ mod test {
         soc.get_cpu().PSW.insert(CpuStatus::CARRY);
         soc.get_wram().borrow_mut()[0x00FE] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x36);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::PARITY));
@@ -660,7 +660,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x00FE] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FF] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x14);
@@ -678,7 +678,7 @@ mod test {
         soc.get_cpu().PSW.insert(CpuStatus::CARRY);
         soc.get_wram().borrow_mut()[0x00FE] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1236);
         assert!(!soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
@@ -696,7 +696,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x00FE] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FF] = 0x01;
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1434);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
@@ -712,7 +712,7 @@ mod test {
         soc.get_cpu().AW = 0x12FF;
         soc.get_cpu().PSW.insert(CpuStatus::CARRY);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x12FF); // 0xFF + 0xFF + 1 = 0x1FF
         assert!(soc.get_cpu().PSW.contains(CpuStatus::AUX_CARRY));
@@ -729,7 +729,7 @@ mod test {
         soc.get_cpu().AW = 0x12FF;
         soc.get_cpu().PSW.insert(CpuStatus::CARRY);
 
-        soc.tick_ignore_cycles();
+        soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0x12FF); // 0x12FF + 0xFFFF + 1 = 0x12FF
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY));
