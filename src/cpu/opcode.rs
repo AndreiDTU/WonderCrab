@@ -323,7 +323,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0xE6, "OUT",     Operand::IMMEDIATE,   Operand::ACCUMULATOR, Mode::M8,  6,  0),
         OpCode::one_byte(0xE7, "OUT",     Operand::IMMEDIATE,   Operand::ACCUMULATOR, Mode::M8,  6,  0),
         
-        OpCode::one_byte(0xE8, "CALL",    Operand::NONE,        Operand::NONE,        Mode::M16, 5,  0),
+        OpCode::one_byte(0xE8, "CALL",    Operand::IMMEDIATE_S, Operand::NONE,        Mode::M16, 5,  0),
         OpCode::one_byte(0xE9, "BR",      Operand::IMMEDIATE_S, Operand::NONE,        Mode::M16, 4,  0),
         OpCode::one_byte(0xEA, "BR",      Operand::IMMEDIATE,   Operand::NONE,        Mode::M32, 7,  0),
         OpCode::one_byte(0xEB, "BR",      Operand::IMMEDIATE_S, Operand::NONE,        Mode::M8,  4,  0),

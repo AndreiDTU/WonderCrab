@@ -1,4 +1,5 @@
 pub mod v30mz;
+#[allow(unused)]
 mod opcode;
 
 // Operands that the instruction applies to

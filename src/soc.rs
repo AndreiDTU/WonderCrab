@@ -39,12 +39,19 @@ impl SoC {
         let cartridge = Rc::new(RefCell::new(Cartridge::new(mapper, sram, rom, rewrittable)));
         let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge))));
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
-        let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 
         if color {io_bus.borrow_mut().color_setup()}
+        cpu.reset();
 
         Self {cpu, dma, mem_bus, io_bus}
+    }
+
+    pub fn run(&mut self, cycles: usize) {
+        for _ in 0..cycles {
+            self.tick();
+        }
     }
 
     pub fn tick(&mut self) {

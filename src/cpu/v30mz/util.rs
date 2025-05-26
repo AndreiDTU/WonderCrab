@@ -97,7 +97,6 @@ impl V30MZ {
     }
 
     pub fn push(&mut self, src: u16) {
-        println!("{:04X}", src);
         self.SP = self.SP.wrapping_sub(2);
         let addr = self.get_stack_address();
         self.write_mem_16(addr, src);

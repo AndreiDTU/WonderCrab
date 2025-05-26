@@ -113,7 +113,7 @@ impl V30MZ {
             SP: 0, BP: 0, 
             PC: 0, pc_displacement: 0,
             
-            PSW: CpuStatus::from_bits_truncate(0xF022),
+            PSW: CpuStatus::from_bits_truncate(0xF002),
 
             current_op: Vec::with_capacity(8),
             segment_override: None,
@@ -131,7 +131,7 @@ impl V30MZ {
         if self.cycles == 0 {
             if !self.rep {self.poll_interrupts()};
             if !self.halt {self.execute()};
-        } else if self.cycles == 1 {
+        } else {
             self.cycles -= 1;
             if self.cycles == 0 {self.commit_writes()};
         }
@@ -142,6 +142,8 @@ impl V30MZ {
         self.expect_op_bytes(1);
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
+
+        // println!("OP: {:02X} {}", op.code, op.name);
 
         if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
             self.rep = false;
@@ -335,8 +337,11 @@ impl V30MZ {
             // LDEA
             0x8D => self.ldea(op.extra),
 
+            // NOP
+            0x90 => {}
+
             // CALL
-            0x9A | 0x9B => self.call(op.op1, op.mode, op.extra),
+            0x9A | 0x9B | 0xE8 => self.call(op.op1, op.mode, op.extra),
 
             // CVTBW
             0x98 => self.cvtbw(),
@@ -416,7 +421,7 @@ impl V30MZ {
             0xE4 | 0xE5 | 0xEC | 0xED => self.in_op(op.mode, op.op2),
 
             // OUT
-            0xE6 | 0xE7 | 0xEE | 0xEF => self.out_op(op.mode, op.op2),
+            0xE6 | 0xE7 | 0xEE | 0xEF => self.out_op(op.mode, op.op1),
 
             // BR
             0xE9..=0xEB => self.branch_op(op.op1, op.mode, op.extra),
@@ -509,6 +514,15 @@ impl V30MZ {
         self.finish_op();
     }
 
+    pub fn reset(&mut self) {
+        self.DS0 = 0x0000;
+        self.DS1 = 0x0000;
+        self.PC = 0x0000;
+        self.PS = 0xFFFF;
+        self.PSW = CpuStatus::from_bits_truncate(0xF002);
+        self.SS = 0x0000;
+    }
+
     pub fn get_pc_address(&mut self) -> u32 {
         self.apply_segment(self.PC, self.PS)
     }
@@ -569,8 +583,6 @@ impl V30MZ {
     }
 
     fn commit_writes(&mut self) {
-        dbg!(&self.mem_buffer);
-        dbg!(&self.io_buffer);
         for (addr, byte) in &self.mem_buffer {
             self.mem_bus.borrow_mut().write_mem(*addr, *byte);
         }

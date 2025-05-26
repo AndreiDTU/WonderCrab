@@ -1,3 +1,5 @@
+use crate::bus::io_bus::IOBus;
+
 pub mod cart_ports;
 
 pub enum Mapper {
@@ -42,9 +44,13 @@ impl Cartridge {
         };
         let lo = addr & 0xFFFF;
 
-        let offset = (hi << 16) | lo;
+        let offset = ((hi << 16) | lo) % self.sram.len() as u32;
 
-        self.sram[offset as usize]
+        if offset as usize > self.sram.len() {
+            IOBus::open_bus()
+        } else {
+            self.sram[offset as usize]
+        }
     }
 
     pub fn write_sram(&mut self, addr: u32, byte: u8) {
@@ -55,9 +61,11 @@ impl Cartridge {
             };
             let lo = addr & 0xFFFF;
 
-            let offset = (hi << 16) | lo;
-
-            self.sram[offset as usize] = byte;
+            let offset = ((hi << 16) | lo) % self.sram.len() as u32;
+            
+            if !(offset as usize > self.sram.len()) {
+                self.sram[offset as usize] = byte;
+            }
         }
     }
 
@@ -68,7 +76,7 @@ impl Cartridge {
         };
         let lo = addr & 0xFFFF;
 
-        let offset = (hi << 16) | lo;
+        let offset = ((hi << 16) | lo) % self.rom.len() as u32;
 
         self.rom[offset as usize]
     }
@@ -80,14 +88,14 @@ impl Cartridge {
         };
         let lo = addr & 0xFFFF;
 
-        let offset = (hi << 16) | lo;
+        let offset = ((hi << 16) | lo) % self.rom.len() as u32;
 
         self.rom[offset as usize]
     }
 
     pub fn read_rom_ex(&self, addr: u32) -> u8 {
         let hi = (self.LINEAR_ADDR_OFF as u32) << 20;
-        let offset = hi | addr;
+        let offset = (hi | addr) % self.rom.len() as u32;
 
         self.rom[offset as usize]
     }
@@ -99,7 +107,7 @@ impl Cartridge {
         };
         let lo = addr & 0xFFFF;
 
-        let offset = (hi << 16) | lo;
+        let offset = ((hi << 16) | lo) % self.rom.len() as u32;
 
         self.rom[offset as usize] = byte;
     }
@@ -111,14 +119,14 @@ impl Cartridge {
         };
         let lo = addr & 0xFFFF;
 
-        let offset = (hi << 16) | lo;
+        let offset = ((hi << 16) | lo) % self.rom.len() as u32;
 
         self.rom[offset as usize] = byte;
     }
 
     pub fn write_rom_ex(&mut self, addr: u32, byte: u8) {
         let hi = (self.LINEAR_ADDR_OFF as u32) << 20;
-        let offset = hi | addr;
+        let offset = (hi | addr) % self.rom.len() as u32;
 
         self.rom[offset as usize] = byte;
     }

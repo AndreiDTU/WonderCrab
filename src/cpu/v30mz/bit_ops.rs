@@ -31,7 +31,6 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let src = self.resolve_src_8(Operand::MEMORY, extra);
-                println!("{}", src);
                 self.write_src_to_dest_8(Operand::MEMORY, !src, extra);
             }
             Mode::M16 => {
@@ -74,8 +73,6 @@ impl V30MZ {
                 let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let res = dest.rotate_left(src as u32);
 
-                println!("{:02X}", res);
-
                 if src != 0 {
                     self.PSW.set(CpuStatus::CARRY, res & 1 != 0);
                 }
@@ -115,8 +112,6 @@ impl V30MZ {
                     old_msb = res >> 7;
                     res = (res << 1) | old_carry;
                 }
-
-                println!("{:02X}", res);
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 7 != old_msb);
 

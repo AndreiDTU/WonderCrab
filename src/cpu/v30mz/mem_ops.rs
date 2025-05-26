@@ -14,7 +14,6 @@ impl V30MZ {
             }
             _ => self.resolve_src_16(src, extra)
         };
-        println!("{:04X}", src);
         self.push(src);
     }
 
