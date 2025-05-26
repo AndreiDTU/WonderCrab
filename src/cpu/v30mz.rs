@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use bitflags::bitflags;
 
@@ -74,6 +74,14 @@ pub struct V30MZ {
     // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
     io_bus: Rc<RefCell<IOBus>>,
+
+    // MEMORY BUFFER
+    mem_buffer: HashMap<u32, u8>,
+    io_buffer: HashMap<u16, u8>,
+
+    // TIMING
+    cycles: u8,
+    base: u8,
 }
 
 impl MemBusConnection for V30MZ {
@@ -82,7 +90,7 @@ impl MemBusConnection for V30MZ {
     }
 
     fn write_mem(&mut self, addr: u32, byte: u8) {
-        self.mem_bus.borrow_mut().write_mem(addr, byte);
+        self.mem_buffer.insert(addr, byte);
     }
 }
 
@@ -92,7 +100,7 @@ impl IOBusConnection for V30MZ {
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
-        self.io_bus.borrow_mut().write_io(addr, byte);
+        self.io_buffer.insert(addr, byte);
     }
 }
 
@@ -112,12 +120,21 @@ impl V30MZ {
             halt: false, rep: false, rep_z: false,
 
             mem_bus: wram, io_bus: io,
+            mem_buffer: HashMap::new(),
+            io_buffer: HashMap::new(),
+
+            cycles: 0, base: 0,
         }
     }
 
     pub fn tick(&mut self) {
-        self.poll_interrupts();
-        if !self.halt {self.execute()}
+        if self.cycles == 0 {
+            if !self.rep {self.poll_interrupts()};
+            if !self.halt {self.execute()};
+        } else if self.cycles == 1 {
+            self.cycles -= 1;
+            if self.cycles == 0 {self.commit_writes()};
+        }
     }
 
     pub fn execute(&mut self) {
@@ -129,6 +146,9 @@ impl V30MZ {
         if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
             self.rep = false;
         }
+
+        self.base = op.cycles;
+        self.cycles = self.base;
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
@@ -183,59 +203,65 @@ impl V30MZ {
             // FULL INSTRUCTIONS
 
             // ADD
-            0x00..=0x05 => self.add(op.op1, op.op2, op.mode),
+            0x00..=0x05 => self.add(op.op1, op.op2, op.mode, op.extra),
 
             // PUSH
-            0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x6A | 0x9C => self.push_op(op.op2),
+            0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x6A | 0x9C => self.push_op(op.op2, op.extra),
             0x60 => self.push_r(),
             // POP
-            0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op2),
+            0x07 | 0x17 | 0x1F | 0x58..=0x5F | 0x8F | 0x9D => self.pop_op(op.op2, op.extra),
             0x61 => self.pop_r(),
 
             // OR
-            0x08..=0x0D => self.or(op.op1, op.op2, op.mode),
+            0x08..=0x0D => self.or(op.op1, op.op2, op.mode, op.extra),
 
             // ADDC
-            0x10..=0x15 => self.addc(op.op1, op.op2, op.mode),
+            0x10..=0x15 => self.addc(op.op1, op.op2, op.mode, op.extra),
 
             // SUBC
-            0x18..=0x1D => self.subc(op.op1, op.op2, op.mode),
+            0x18..=0x1D => self.subc(op.op1, op.op2, op.mode, op.extra),
 
             // AND
-            0x20..=0x25 => self.and(op.op1, op.op2, op.mode),
+            0x20..=0x25 => self.and(op.op1, op.op2, op.mode, op.extra),
 
             // ADJ4A
             0x27 => self.adj4a(),
 
             // SUB
-            0x28..=0x2D => self.sub(op.op1, op.op2, op.mode),
+            0x28..=0x2D => self.sub(op.op1, op.op2, op.mode, op.extra),
 
             // ADJ4S
             0x2F => self.adj4s(),
 
             // XOR
-            0x30..=0x35 => self.xor(op.op1, op.op2, op.mode),
+            0x30..=0x35 => self.xor(op.op1, op.op2, op.mode, op.extra),
 
             // ADJBA
             0x37 => self.adjba(),
 
             // CMP
-            0x38..=0x3D => self.cmp(op.op1, op.op2, op.mode),
+            0x38..=0x3D => self.cmp(op.op1, op.op2, op.mode, op.extra),
 
             // ADJBS
             0x3F => self.adjbs(),
 
             // INC
-            0x40..=0x47 => self.inc(op.op1, op.mode),
+            0x40..=0x47 => self.inc(op.op1, op.mode, op.extra),
 
             // DEC
-            0x48..=0x4F => self.dec(op.op1, op.mode),
+            0x48..=0x4F => self.dec(op.op1, op.mode, op.extra),
 
             // CHKIND
-            0x62 => self.chkind(),
+            0x62 => self.chkind(op.extra),
 
             // MUL
-            0x69 | 0x6B => self.mul(op.op3, op.mode),
+            0x69 | 0x6B => self.mul(op.op3, op.mode, op.extra),
+
+            // INM
+            0x6C | 0x6D => self.inm(op.mode),
+
+            // OUTM
+            0x6E | 0x6F => self.outm(op.mode),
 
             // Branch ops
             0x70 => self.branch(self.PSW.contains(CpuStatus::OVERFLOW)),
@@ -273,24 +299,26 @@ impl V30MZ {
             0x80..=0x83 => {
                 self.expect_op_bytes(2);
                 let sub_op = &IMMEDIATE_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
+                self.base = sub_op.cycles;
+                self.cycles = self.base;
                 match sub_op.code {
-                    0 => self.add(op.op1, op.op2, op.mode),
-                    1 => self.or(op.op1, op.op2, op.mode),
-                    2 => self.addc(op.op1, op.op2, op.mode),
-                    3 => self.subc(op.op1, op.op2, op.mode),
-                    4 => self.and(op.op1, op.op2, op.mode),
-                    5 => self.sub(op.op1, op.op2, op.mode),
-                    6 => self.xor(op.op1, op.op2, op.mode),
-                    7 => self.cmp(op.op1, op.op2, op.mode),
+                    0 => self.add(op.op1, op.op2, op.mode, sub_op.extra),
+                    1 => self.or(op.op1, op.op2, op.mode, sub_op.extra),
+                    2 => self.addc(op.op1, op.op2, op.mode, sub_op.extra),
+                    3 => self.subc(op.op1, op.op2, op.mode, sub_op.extra),
+                    4 => self.and(op.op1, op.op2, op.mode, sub_op.extra),
+                    5 => self.sub(op.op1, op.op2, op.mode, sub_op.extra),
+                    6 => self.xor(op.op1, op.op2, op.mode, sub_op.extra),
+                    7 => self.cmp(op.op1, op.op2, op.mode, sub_op.extra),
                     _ => unreachable!(),
                 }
             }
 
             // TEST
-            0x84 | 0x85 | 0xA8 | 0xA9 => self.test(op.op1, op.op2, op.mode),
+            0x84 | 0x85 | 0xA8 | 0xA9 => self.test(op.op1, op.op2, op.mode, op.extra),
 
             // XCH
-            0x86 | 0x87 | 0x91..=0x97 => self.xch(op.mode, op.op1, op.op2),
+            0x86 | 0x87 | 0x91..=0x97 => self.xch(op.mode, op.op1, op.op2, op.extra),
 
             // MOV
             0x9E => {
@@ -302,13 +330,13 @@ impl V30MZ {
             0x9F => {
                 self.AW = swap_h(self.AW, self.PSW.bits() as u8);
             }
-            0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(op),
+            0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(op, op.extra),
 
             // LDEA
-            0x8D => self.ldea(),
+            0x8D => self.ldea(op.extra),
 
             // CALL
-            0x9A | 0x9B => self.call(op.op1, op.mode),
+            0x9A | 0x9B => self.call(op.op1, op.mode, op.extra),
 
             // CVTBW
             0x98 => self.cvtbw(),
@@ -316,19 +344,34 @@ impl V30MZ {
             // CVTWL
             0x99 => self.cvtwl(),
 
+            // MOVBK
+            0xA4 | 0xA5 => self.movbk(op.mode),
+
+            // CMPBK
+            0xA6 | 0xA7 => self.cmpbk(op.mode),
+
+            // STM
+            0xAA | 0xAB => self.stm(op.mode),
+
+            // LDM
+            0xAC | 0xAD => self.ldm(op.mode),
+
+            // CMPM
+            0xAE | 0xAF => self.cmpm(op.mode),
+
             // Shift Group
             0xC0 | 0xC1 | 0xD0..=0xD3 => {
                 self.expect_op_bytes(2);
                 let sub_op = &SHIFT_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 match sub_op.code {
-                    0 => self.rol(op.code, op.mode),
-                    1 => self.ror(op.code, op.mode),
-                    2 => self.rolc(op.code, op.mode),
-                    3 => self.rorc(op.code, op.mode),
-                    4 => self.shl(op.code, op.mode),
-                    5 => self.shr(op.code, op.mode),
+                    0 => self.rol(op.code, op.mode, op.extra),
+                    1 => self.ror(op.code, op.mode, op.extra),
+                    2 => self.rolc(op.code, op.mode, op.extra),
+                    3 => self.rorc(op.code, op.mode, op.extra),
+                    4 => self.shl(op.code, op.mode, op.extra),
+                    5 => self.shr(op.code, op.mode, op.extra),
                     6 => todo!(),
-                    7 => self.shra(op.code, op.mode),
+                    7 => self.shra(op.code, op.mode, op.extra),
                     _ => unreachable!()
                 }
             }
@@ -376,7 +419,7 @@ impl V30MZ {
             0xE6 | 0xE7 | 0xEE | 0xEF => self.out_op(op.mode, op.op2),
 
             // BR
-            0xE9..=0xEB => self.branch_op(op.op1, op.mode),
+            0xE9..=0xEB => self.branch_op(op.op1, op.mode, op.extra),
 
             // HALT
             0xF4 => self.halt = true,
@@ -388,15 +431,38 @@ impl V30MZ {
             0xF6 | 0xF7 => {
                 self.expect_op_bytes(2);
                 let sub_op = &GROUP_1[(self.current_op[1] & 0b0011_1000) as usize >> 3];
+                self.base = sub_op.cycles;
+                self.cycles = self.base;
                 match sub_op.code {
-                    0 => self.test(op.op1, op.op2, op.mode),
+                    0 => self.test(op.op1, op.op2, op.mode, sub_op.extra),
                     1 => todo!(),
-                    2 => self.not(op.mode),
-                    3 => self.neg(op.mode),
-                    4 => self.mulu(op.mode),
-                    5 => self.mul(op.op3, op.mode),
-                    6 => self.divu(op.mode),
-                    7 => self.div(op.mode),
+                    2 => self.not(op.mode, sub_op.extra),
+                    3 => self.neg(op.mode, sub_op.extra),
+                    4 => self.mulu(op.mode, sub_op.extra),
+                    5 => self.mul(op.op3, op.mode, sub_op.extra),
+                    6 | 7 => match (op.code, sub_op.code) {
+                        (0xF6, 6) => {
+                            self.base = 15;
+                            self.cycles = self.base;
+                            self.divu(op.mode, 1);
+                        }
+                        (0xF7, 6) => {
+                            self.base = 23;
+                            self.cycles = self.base;
+                            self.divu(op.mode, 1);
+                        }
+                        (0xF6, 7) => {
+                            self.base = 17;
+                            self.cycles = self.base;
+                            self.div(op.mode, 1);
+                        }
+                        (0xF7, 7) => {
+                            self.base = 24;
+                            self.cycles = self.base;
+                            self.div(op.mode, 1);
+                        }
+                        _ => unreachable!(),
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -419,18 +485,23 @@ impl V30MZ {
             0xFE | 0xFF => {
                 self.expect_op_bytes(2);
                 let sub_op = &GROUP_2[(self.current_op[1] & 0b0011_1000) as usize >> 3];
+                self.base = sub_op.cycles;
+                self.cycles = self.base;
                 match sub_op.code {
-                    0 => self.inc(op.op1, op.mode),
-                    1 => self.dec(op.op1, op.mode),
-                    2 => self.call(op.op1, op.mode),
-                    3 => self.call(op.op1, op.mode),
-                    4 => self.branch_op(op.op1, op.mode),
-                    5 => self.branch_op(op.op1, op.mode),
-                    6 => self.push_op(Operand::MEMORY),
+                    0 => self.inc(op.op1, op.mode, sub_op.extra),
+                    1 => self.dec(op.op1, op.mode, sub_op.extra),
+                    2 => self.call(op.op1, op.mode, sub_op.extra),
+                    3 => self.call(op.op1, op.mode, sub_op.extra),
+                    4 => self.branch_op(op.op1, op.mode, sub_op.extra),
+                    5 => self.branch_op(op.op1, op.mode, sub_op.extra),
+                    6 => self.push_op(Operand::MEMORY, sub_op.extra),
                     7 => todo!(),
                     _ => unreachable!()
                 }
             }
+
+            // NOP
+            0x0F | 0x63..=0x67 => {}
                 
             code => panic!("Not yet implemented! Code: {:02X}", code),
         };
@@ -445,6 +516,7 @@ impl V30MZ {
     fn finish_op(&mut self) {
         if self.rep {
             self.CW = self.CW.wrapping_sub(1);
+            self.pc_displacement = 0;
         }
 
         if !self.rep || self.CW == 0 {
@@ -455,12 +527,20 @@ impl V30MZ {
 
         self.current_op.clear();
         self.pc_displacement = 0;
+        self.cycles -= 1;
+        if self.cycles == 0 {
+            self.commit_writes();
+        }
     }
 
     fn finish_prefix(&mut self) {
         self.current_op.clear();
         self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
+        self.cycles -= 1;
+        if self.cycles == 0 {
+            self.commit_writes();
+        }
     }
 
     fn raise_exception(&mut self, vector: u8) {
@@ -477,12 +557,34 @@ impl V30MZ {
 
     fn poll_interrupts(&mut self) {
         let nmi = self.read_io(0xB7) != 0;
-        if (self.read_io(0xB4) != 0 || nmi) && self.mem_bus.borrow().owner != Owner::CPU {
+        let cause = self.read_io(0xB4);
+        if (cause != 0 || nmi) && self.mem_bus.borrow().owner != Owner::CPU {
             self.halt = false;
             if (self.PSW.contains(CpuStatus::INTERRUPT)) || nmi {
-                let vector = self.read_io(0xB0);
+                let source = cause.trailing_zeros() as u8;
+                let vector = self.read_io(0xB0).wrapping_add(source);
                 self.raise_exception(vector);
             }
         }
+    }
+
+    fn commit_writes(&mut self) {
+        dbg!(&self.mem_buffer);
+        dbg!(&self.io_buffer);
+        for (addr, byte) in &self.mem_buffer {
+            self.mem_bus.borrow_mut().write_mem(*addr, *byte);
+        }
+        for (addr, byte) in &self.io_buffer {
+            self.io_bus.borrow_mut().write_io(*addr, *byte);
+        }
+        self.mem_buffer.clear();
+        self.io_buffer.clear();
+    }
+
+    #[cfg(test)]
+    pub fn tick_ignore_cycles(&mut self) {
+        if !self.rep {self.poll_interrupts()};
+        if !self.halt {self.execute()};
+        self.commit_writes();
     }
 }

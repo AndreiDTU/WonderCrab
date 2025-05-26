@@ -97,6 +97,7 @@ impl V30MZ {
     }
 
     pub fn push(&mut self, src: u16) {
+        println!("{:04X}", src);
         self.SP = self.SP.wrapping_sub(2);
         let addr = self.get_stack_address();
         self.write_mem_16(addr, src);
@@ -137,13 +138,13 @@ impl V30MZ {
         }
     }
 
-    pub fn resolve_src_16(&mut self, op: Operand) -> u16 {
+    pub fn resolve_src_16(&mut self, op: Operand, extra: u8) -> u16 {
         match op {
             Operand::MEMORY => {
                 self.expect_op_bytes(2);
                 let byte = self.current_op[1];
 
-                self.resolve_mem_src_16(byte)
+                self.resolve_mem_src_16(byte, extra)
             },
             Operand::REGISTER => {
                 self.expect_op_bytes(2);
@@ -174,12 +175,12 @@ impl V30MZ {
         }
     }
 
-    pub fn resolve_src_8(&mut self, op: Operand) -> u8 {
+    pub fn resolve_src_8(&mut self, op: Operand, extra: u8) -> u8 {
         match op {
             Operand::MEMORY => {
                 self.expect_op_bytes(2);
 
-                self.resolve_mem_src_8(self.current_op[1])
+                self.resolve_mem_src_8(self.current_op[1], extra)
             }
             Operand::REGISTER => {
                 self.expect_op_bytes(2);
@@ -201,8 +202,8 @@ impl V30MZ {
         }
     }
 
-    pub fn resolve_mem_src_32(&mut self, byte: u8) -> (u16, u16) {
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16);
+    pub fn resolve_mem_src_32(&mut self, byte: u8, extra: u8) -> (u16, u16) {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16, extra);
 
         match mem_operand {
             MemOperand::Offset(offset) => {
@@ -213,8 +214,8 @@ impl V30MZ {
         }
     }
 
-    pub fn resolve_mem_src_16(&mut self, byte: u8) -> u16 {
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16);
+    pub fn resolve_mem_src_16(&mut self, byte: u8, extra: u8) -> u16 {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16, extra);
 
         match mem_operand {
             MemOperand::Offset(offset) => {
@@ -225,8 +226,8 @@ impl V30MZ {
         }
     }
 
-    pub fn resolve_mem_src_8(&mut self, byte: u8) -> u8 {
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8);
+    pub fn resolve_mem_src_8(&mut self, byte: u8, extra: u8) -> u8 {
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8, extra);
 
         match mem_operand {
             MemOperand::Offset(offset) => {
@@ -237,9 +238,9 @@ impl V30MZ {
         }
     }
 
-    pub fn write_src_to_dest_16(&mut self, dest: Operand, src: u16) {
+    pub fn write_src_to_dest_16(&mut self, dest: Operand, src: u16, extra: u8) {
         match dest {
-            Operand::MEMORY => self.write_mem_operand_16(src),
+            Operand::MEMORY => self.write_mem_operand_16(src, extra),
             Operand::REGISTER => {
                 self.expect_op_bytes(2);
 
@@ -256,9 +257,9 @@ impl V30MZ {
         }
     }
 
-    pub fn write_src_to_dest_8(&mut self, dest: Operand, src: u8) {
+    pub fn write_src_to_dest_8(&mut self, dest: Operand, src: u8, extra: u8) {
         match dest {
-            Operand::MEMORY => self.write_mem_operand_8(src),
+            Operand::MEMORY => self.write_mem_operand_8(src, extra),
             Operand::REGISTER => {
                 self.expect_op_bytes(2);
 
@@ -281,10 +282,10 @@ impl V30MZ {
         self.apply_segment(offset, self.DS0)
     }
 
-    pub fn write_mem_operand_16(&mut self, src: u16) {
+    pub fn write_mem_operand_16(&mut self, src: u16, extra: u8) {
         self.expect_op_bytes(2);
         let byte = self.current_op[1];
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16);
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16, extra);
 
         match mem_operand {
             MemOperand::Offset(offset) => {
@@ -298,10 +299,10 @@ impl V30MZ {
         }
     }
 
-    pub fn write_mem_operand_8(&mut self, src: u8) {
+    pub fn write_mem_operand_8(&mut self, src: u8, extra: u8) {
         self.expect_op_bytes(2);
         let byte = self.current_op[1];
-        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8);
+        let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8, extra);
 
         match mem_operand {
             MemOperand::Offset(offset) => {
@@ -367,13 +368,16 @@ impl V30MZ {
     }
 
     // Returns the operand and its default segment's value
-    pub fn resolve_mem_operand(&mut self, byte: u8, mode: Mode) -> (MemOperand, u16) {
+    pub fn resolve_mem_operand(&mut self, byte: u8, mode: Mode, extra: u8) -> (MemOperand, u16) {
         let segment = self.DS0;
         let a = byte >> 6;
         let m = byte & 0b111;
 
         // When a is 3, m specifies the index of the register containing the operand's value.
-        if a == 3 {return (MemOperand::Register(self.resolve_register_operand(m, mode)), segment)};
+        if a == 3 {return (MemOperand::Register(self.resolve_register_operand(m, mode)), segment)}
+        else if self.cycles == self.base {
+            self.cycles += extra;
+        }
 
         // When a is 0 and m is 6, the operand's memory offset is not given by an expression.
         // Instead, the literal 16-bit offset is present as two additional bytes of program code (low byte first).

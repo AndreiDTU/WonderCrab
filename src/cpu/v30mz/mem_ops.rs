@@ -1,7 +1,7 @@
 use super::*;
 
 impl V30MZ {
-    pub fn push_op(&mut self, src: Operand) {
+    pub fn push_op(&mut self, src: Operand, extra: u8) {
         // Stores a 16-bit value on the stack.
         let src = match src {
             Operand::SEGMENT => {
@@ -12,8 +12,9 @@ impl V30MZ {
                 let bits = self.current_op[0] & 0b111;
                 self.resolve_register_operand(bits, Mode::M16).try_into().unwrap()
             }
-            _ => self.resolve_src_16(src)
+            _ => self.resolve_src_16(src, extra)
         };
+        println!("{:04X}", src);
         self.push(src);
     }
 
@@ -29,11 +30,11 @@ impl V30MZ {
         self.push(self.IY);
     }
 
-    pub fn pop_op(&mut self, dest: Operand) {
+    pub fn pop_op(&mut self, dest: Operand, extra: u8) {
         // Retrieves a 16-bit value from the stack and stores it in the operand.
         let src = self.pop();
         match dest {
-            Operand::MEMORY => self.write_mem_operand_16(src),
+            Operand::MEMORY => self.write_mem_operand_16(src, extra),
             Operand::REGISTER => {
                 let bits = self.current_op[0] & 0b111;
                 let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
@@ -64,7 +65,7 @@ impl V30MZ {
         self.AW = self.pop();
     }
 
-    pub fn mov(&mut self, operation: &OpCode) {
+    pub fn mov(&mut self, operation: &OpCode, extra: u8) {
         // Copies the value of op2 to op1
         // or reads two u16s from op3 and copies their values to op1 and op2
         let (mode, op1, op2, op3) = (operation.mode, operation.op1, operation.op2, operation.op3);
@@ -76,14 +77,14 @@ impl V30MZ {
         if (op1, op2) == (Operand::MEMORY, Operand::IMMEDIATE) {
             self.expect_op_bytes(2);
             let byte = self.current_op[1];
-            self.resolve_mem_operand(byte, mode);
+            self.resolve_mem_operand(byte, mode, extra);
             
             if mode == Mode::M8 {
                 let src = self.expect_extra_byte();
-                self.write_mem_operand_8(src);
+                self.write_mem_operand_8(src, extra);
             } else {
                 let src = self.expect_extra_word();
-                self.write_mem_operand_16(src);
+                self.write_mem_operand_16(src, extra);
             }
             return;
         }
@@ -92,12 +93,12 @@ impl V30MZ {
             None => {
                 match mode {
                     Mode::M8 => {
-                        let src = self.resolve_src_8(op2);
-                        self.write_src_to_dest_8(op1, src);
+                        let src = self.resolve_src_8(op2, extra);
+                        self.write_src_to_dest_8(op1, src, extra);
                     }
                     Mode::M16 => {
-                        let src = self.resolve_src_16(op2);
-                        self.write_src_to_dest_16(op1, src);
+                        let src = self.resolve_src_16(op2, extra);
+                        self.write_src_to_dest_16(op1, src, extra);
                     }
                     Mode::M32 => panic!("32-bit move only valid when op3 exists"),
                 }
@@ -105,7 +106,7 @@ impl V30MZ {
             Some(_) => {
                 self.expect_op_bytes(2);
                 let byte = self.current_op[1];
-                let src = self.resolve_mem_src_32(byte);
+                let src = self.resolve_mem_src_32(byte, extra);
 
                 let bits = (self.current_op[1] & 0b0011_1000) >> 3;
 
@@ -119,7 +120,7 @@ impl V30MZ {
         }
     }
 
-    pub fn ldea(&mut self) {
+    pub fn ldea(&mut self, extra: u8) {
         // Calculates the offset of a memory operand and stores
         // the result into a 16-bit register.
 
@@ -127,7 +128,7 @@ impl V30MZ {
         self.expect_op_bytes(2);
 
         let byte = self.current_op[1];
-        let (address, _) = self.resolve_mem_operand(byte, Mode::M16);
+        let (address, _) = self.resolve_mem_operand(byte, Mode::M16, extra);
 
         match address {
             MemOperand::Offset(offset) => self.AW = offset,
@@ -210,23 +211,23 @@ impl V30MZ {
         }
     }
     
-    pub fn xch(&mut self, mode: Mode, op1: Operand, op2: Operand) {
+    pub fn xch(&mut self, mode: Mode, op1: Operand, op2: Operand, extra: u8) {
         // Exchanges the values stored in the operands. 
 
         match mode {
             Mode::M8 => {
-                let src1 = self.resolve_src_8(op1);
-                let src2 = self.resolve_src_8(op2);
-                self.write_src_to_dest_8(op1, src2);
-                self.write_src_to_dest_8(op2, src1);
+                let src1 = self.resolve_src_8(op1, extra);
+                let src2 = self.resolve_src_8(op2, extra);
+                self.write_src_to_dest_8(op1, src2, extra);
+                self.write_src_to_dest_8(op2, src1, extra);
             }
             Mode::M16 => {
                 match op2 {
                     Operand::MEMORY => {
-                        let src1 = self.resolve_src_16(op1);
-                        let src2 = self.resolve_src_16(op2);
-                        self.write_src_to_dest_16(op1, src2);
-                        self.write_src_to_dest_16(op2, src1);
+                        let src1 = self.resolve_src_16(op1, extra);
+                        let src2 = self.resolve_src_16(op2, extra);
+                        self.write_src_to_dest_16(op1, src2, extra);
+                        self.write_src_to_dest_16(op2, src1, extra);
                     }
                     _ => {
                         let src1 = self.AW;
@@ -261,10 +262,32 @@ mod test {
 
         soc.get_cpu().DS1 = 0x1234;
 
+        soc.tick_ignore_cycles();
+        assert_eq_hex!(soc.get_cpu().SP, 0x1000);
+        assert_eq_hex!(soc.get_cpu().PC, 0x0003);
+        soc.tick_ignore_cycles();
+        let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+        assert_eq_hex!(soc.read_mem_16(addr), 0x1234);
+    }
+
+    #[test]
+    fn test_0x06_push_seg_cycles() {
+        let mut soc = SoC::new();
+        soc.set_wram(vec![
+            0xBC, 0x00, 0x10, // SP <- 0x1000
+            0x06              // PUSH DS1
+        ]);
+
+        soc.get_cpu().DS1 = 0x1234;
+
         soc.tick();
         assert_eq_hex!(soc.get_cpu().SP, 0x1000);
+        assert_eq_hex!(soc.get_cpu().PC, 0x0003);
+        soc.tick();
         soc.tick();
         let addr = soc.get_cpu().get_stack_address();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.read_mem_16(addr), 0x1234);
     }
 
@@ -289,48 +312,48 @@ mod test {
         ]);
 
         for _ in 0..8 {
-            soc.tick();
+            soc.tick_ignore_cycles();
         }
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().SP.wrapping_add(2));
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().AW);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().CW);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().DW);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().BW);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().BP);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().IX);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         let addr = soc.get_cpu().get_stack_address();
         assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().IY);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, soc.get_cpu().IY);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().CW, soc.get_cpu().IX);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().DW, soc.get_cpu().BP);
     }
 
@@ -345,15 +368,15 @@ mod test {
         soc.get_cpu().AW = 0x1234;
         soc.get_cpu().IX = 0xFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().CW, 0x0034);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x34);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
     }
@@ -369,16 +392,16 @@ mod test {
         soc.get_cpu().AW = 0x1234;
         soc.get_cpu().IX = 0xFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().CW, 0x1234);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0x12);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x12);
@@ -397,15 +420,15 @@ mod test {
         soc.get_wram().borrow_mut()[0x00FF] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FE] = 0x12;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x0034);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x00FF);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_cpu().AW, 0x0012);
     }
@@ -424,15 +447,15 @@ mod test {
         soc.get_wram().borrow_mut()[0x0100] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FE] = 0x12;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFF);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_cpu().AW, 0xFF12);
     }
@@ -448,16 +471,16 @@ mod test {
         soc.get_cpu().DS1 = 0x1234;
         soc.get_cpu().IX = 0xFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().CW, 0x1234);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0x12);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x00FF], 0x12);
@@ -479,25 +502,25 @@ mod test {
         soc.get_cpu().BW = 0x5678;
         soc.get_cpu().IX = 0x1111;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0006);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0009);
         assert_eq_hex!(soc.get_cpu().AW, 0x679A);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x6788);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x789A);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x6788);
     }
 
@@ -515,15 +538,15 @@ mod test {
         soc.get_wram().borrow_mut()[0x0100] = 0xFF;
         soc.get_wram().borrow_mut()[0x00FE] = 0x12;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().DS1, 0x1234);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().DS1, 0xFFFF);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_cpu().DS1, 0xFF12);
     }
@@ -534,12 +557,12 @@ mod test {
         
         soc.get_cpu().AW = 0x00FF;
         soc.get_cpu().current_op = vec![0x98];
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFF);
 
         soc.get_cpu().AW = 0xFF00;
         soc.get_cpu().current_op = vec![0x98];
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x0000);
     }
 
@@ -549,12 +572,12 @@ mod test {
 
         soc.get_cpu().AW = 0x8000;
         soc.get_cpu().current_op = vec![0x99];
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().DW, 0xFFFF);
 
         soc.get_cpu().AW = 0x7FFF;
         soc.get_cpu().current_op = vec![0x99];
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().DW, 0x0000);
     }
 
@@ -566,7 +589,7 @@ mod test {
         ]);
 
         soc.get_cpu().AW = 0x55_00;
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0001);
         assert_eq_hex!(soc.get_cpu().PSW.bits() & 0xFF, 0x55);
     }
@@ -579,7 +602,7 @@ mod test {
         ]);
 
         soc.get_cpu().PSW = CpuStatus::from_bits_truncate(0b1010_1010);
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0001);
         assert_eq_hex!(soc.get_cpu().AW >> 8, 0xAA);
     }
@@ -595,7 +618,7 @@ mod test {
         soc.get_cpu().AW = 0x0000;
         soc.get_wram().borrow_mut()[0x1234] = 0xAB;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0x00AB);
     }
@@ -612,7 +635,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x1234] = 0xCD;
         soc.get_wram().borrow_mut()[0x1235] = 0xAB;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
     }
@@ -627,7 +650,7 @@ mod test {
         soc.get_cpu().DS0 = 0x0000;
         soc.get_cpu().AW = 0x00FE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_wram().borrow()[0x1234], 0xFE);
     }
@@ -642,7 +665,7 @@ mod test {
         soc.get_cpu().DS0 = 0x0000;
         soc.get_cpu().AW = 0xBEEF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_wram().borrow()[0x1234], 0xEF);
         assert_eq_hex!(soc.get_wram().borrow()[0x1235], 0xBE);
@@ -655,7 +678,7 @@ mod test {
             0xB0, 0x12, // AL <- 0x12
         ]);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x0012);
     }
@@ -667,7 +690,7 @@ mod test {
             0xB8, 0x34, 0x12, // AW <- 0x1234
         ]);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0003);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
     }
@@ -683,7 +706,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x0102] = 0x78;
         soc.get_wram().borrow_mut()[0x0103] = 0x56;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
         assert_eq_hex!(soc.get_cpu().DS1, 0x5678);
@@ -700,7 +723,7 @@ mod test {
         soc.get_wram().borrow_mut()[0x0102] = 0x78;
         soc.get_wram().borrow_mut()[0x0103] = 0x56;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0004);
         assert_eq_hex!(soc.get_cpu().AW, 0x1234);
         assert_eq_hex!(soc.get_cpu().DS0, 0x5678);
@@ -713,7 +736,7 @@ mod test {
             0xC6, 0x06, 0x00, 0x01, 0xAB, // WRAM[0x0100] <- 0xAB
         ]);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0005);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0xAB);
     }
@@ -725,7 +748,7 @@ mod test {
             0xC7, 0x06, 0x00, 0x01, 0x34, 0x12, // WRAM[0x0100] <- 0x1234
         ]);
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0006);
         assert_eq_hex!(soc.get_wram().borrow()[0x0100], 0x34);
         assert_eq_hex!(soc.get_wram().borrow()[0x0101], 0x12);
@@ -737,11 +760,11 @@ mod test {
         soc.set_wram(vec![0xD6, 0xD6]);
 
         soc.get_cpu().PSW.insert(CpuStatus::CARRY);
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x00FF);
         
         soc.get_cpu().PSW.remove(CpuStatus::CARRY);
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x0000);
     }
 
@@ -750,7 +773,7 @@ mod test {
         let mut soc = SoC::new();
         soc.set_wram(vec![0xE4, 0x00]);
         soc.set_io(vec![0xCD, 0xAB]);
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x00CD);
     }
 
@@ -759,7 +782,7 @@ mod test {
         let mut soc = SoC::new();
         soc.set_wram(vec![0xE5, 0x00]);
         soc.set_io(vec![0xCD, 0xAB]);
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
     }
 
@@ -769,7 +792,7 @@ mod test {
         soc.set_wram(vec![0xEC, 0xFF]);
         soc.set_io(vec![0xCD, 0xAB]);
         soc.get_cpu().DW = 0x00;
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x00CD);
     }
 
@@ -779,7 +802,7 @@ mod test {
         soc.set_wram(vec![0xED, 0xFF]);
         soc.set_io(vec![0xCD, 0xAB]);
         soc.get_cpu().DW = 0x00;
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xABCD);
     }
 }

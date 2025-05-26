@@ -3,7 +3,7 @@ use crate::{bus::mem_bus::MemBusConnection, cpu::{Mode, Operand}};
 use super::{CpuStatus, V30MZ};
 
 impl V30MZ {
-    pub fn branch_op(&mut self, op: Operand, mode: Mode) {
+    pub fn branch_op(&mut self, op: Operand, mode: Mode, extra: u8) {
         match op {
             Operand::IMMEDIATE => (self.PC, self.PS) = (self.expect_extra_word(), self.expect_extra_word()),
             Operand::IMMEDIATE_S => {
@@ -22,11 +22,11 @@ impl V30MZ {
                 match mode {
                     Mode::M16 => {
                         self.expect_op_bytes(2);
-                        self.PC = self.resolve_mem_src_16(self.current_op[1]);
+                        self.PC = self.resolve_mem_src_16(self.current_op[1], extra);
                     }
                     Mode::M32 => {
                         self.expect_op_bytes(2);
-                        (self.PC, self.PS) = self.resolve_mem_src_32(self.current_op[1]);
+                        (self.PC, self.PS) = self.resolve_mem_src_32(self.current_op[1], extra);
                     }
                     _ => unreachable!(),
                 }
@@ -49,19 +49,19 @@ impl V30MZ {
         if self.PSW.contains(CpuStatus::OVERFLOW) {self.raise_exception(4)}
     }
 
-    pub fn call(&mut self, op: Operand, mode: Mode) {
+    pub fn call(&mut self, op: Operand, mode: Mode, extra: u8) {
         if mode == Mode::M32 {
             self.push(self.PS);
         }
         self.push(self.PC);
         
-        self.branch_op(op, mode);
+        self.branch_op(op, mode, extra);
     }
 
-    pub fn chkind(&mut self) {
+    pub fn chkind(&mut self, extra: u8) {
         self.expect_op_bytes(2);
-        let reg = self.resolve_src_16(Operand::REGISTER);
-        let (lo, hi) = self.resolve_mem_src_32(self.current_op[1]);
+        let reg = self.resolve_src_16(Operand::REGISTER, extra);
+        let (lo, hi) = self.resolve_mem_src_32(self.current_op[1], extra);
         if !(reg >= lo && reg < hi) {self.raise_exception(5)}
     }
 

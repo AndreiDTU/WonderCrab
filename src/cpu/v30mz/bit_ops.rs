@@ -3,75 +3,75 @@ use crate::cpu::parity;
 use super::*;
 
 impl V30MZ {
-    pub fn and(&mut self, op1: Operand, op2: Operand, mode: Mode) {
+    pub fn and(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                let a = self.resolve_src_8(op1);
-                let b = self.resolve_src_8(op2);
+                let a = self.resolve_src_8(op1, extra);
+                let b = self.resolve_src_8(op2, extra);
                 let res = a & b;
 
                 self.update_flags_bitwise_8(res);
 
-                self.write_src_to_dest_8(op1, res);
+                self.write_src_to_dest_8(op1, res, extra);
             }
             Mode::M16 => {
-                let a = self.resolve_src_16(op1);
-                let b = self.resolve_src_16(op2);
+                let a = self.resolve_src_16(op1, extra);
+                let b = self.resolve_src_16(op2, extra);
                 let res = a & b;
 
                 self.update_flags_bitwise_16(res);
 
-                self.write_src_to_dest_16(op1, res);
+                self.write_src_to_dest_16(op1, res, extra);
             }
             _ => unreachable!(),
         }
     }
 
-    pub fn not(&mut self, mode: Mode) {
+    pub fn not(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                let src = self.resolve_src_8(Operand::MEMORY);
+                let src = self.resolve_src_8(Operand::MEMORY, extra);
                 println!("{}", src);
-                self.write_src_to_dest_8(Operand::MEMORY, !src);
+                self.write_src_to_dest_8(Operand::MEMORY, !src, extra);
             }
             Mode::M16 => {
-                let src = self.resolve_src_16(Operand::MEMORY);
-                self.write_src_to_dest_16(Operand::MEMORY, !src);
+                let src = self.resolve_src_16(Operand::MEMORY, extra);
+                self.write_src_to_dest_16(Operand::MEMORY, !src, extra);
             }
             Mode::M32 => unreachable!()
         }
     }
 
-    pub fn or(&mut self, op1: Operand, op2: Operand, mode: Mode) {
+    pub fn or(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                let a = self.resolve_src_8(op1);
-                let b = self.resolve_src_8(op2);
+                let a = self.resolve_src_8(op1, extra);
+                let b = self.resolve_src_8(op2, extra);
                 let res = a | b;
 
                 self.update_flags_bitwise_8(res);
 
-                self.write_src_to_dest_8(op1, res);
+                self.write_src_to_dest_8(op1, res, extra);
             }
             Mode::M16 => {
-                let a = self.resolve_src_16(op1);
-                let b = self.resolve_src_16(op2);
+                let a = self.resolve_src_16(op1, extra);
+                let b = self.resolve_src_16(op2, extra);
                 let res = a | b;
 
                 self.update_flags_bitwise_16(res);
 
-                self.write_src_to_dest_16(op1, res);
+                self.write_src_to_dest_16(op1, res, extra);
             }
             _ => unreachable!(),
         }
     }
 
-    pub fn rol(&mut self, code: u8, mode: Mode) {
+    pub fn rol(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
         match mode {
             Mode::M8 => {
-                let dest = self.resolve_src_8(Operand::MEMORY);
+                let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let res = dest.rotate_left(src as u32);
 
                 println!("{:02X}", res);
@@ -82,10 +82,10 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 7 != res & 1);
 
-                self.write_src_to_dest_8(Operand::MEMORY, res);
+                self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
-                let dest = self.resolve_src_16(Operand::MEMORY);
+                let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let res = dest.rotate_left(src as u32);
 
                 if src != 0 {
@@ -94,18 +94,18 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 15 != res & 1);
 
-                self.write_src_to_dest_16(Operand::MEMORY, res);
+                self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
     }
 
-    pub fn rolc(&mut self, code: u8, mode: Mode) {
+    pub fn rolc(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
         match mode {
             Mode::M8 => {
-                let dest = self.resolve_src_8(Operand::MEMORY);
+                let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let mut res = dest;
                 let mut old_msb = res >> 7;
 
@@ -120,10 +120,10 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 7 != old_msb);
 
-                self.write_src_to_dest_8(Operand::MEMORY, res);
+                self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
-                let dest = self.resolve_src_16(Operand::MEMORY);
+                let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let mut res = dest;
                 let mut old_msb = res >> 15;
 
@@ -136,18 +136,18 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 15 != old_msb);
 
-                self.write_src_to_dest_16(Operand::MEMORY, res);
+                self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
     }
 
-    pub fn ror(&mut self, code: u8, mode: Mode) {
+    pub fn ror(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
         match mode {
             Mode::M8 => {
-                let dest = self.resolve_src_8(Operand::MEMORY);
+                let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let res = dest.rotate_right(src as u32);
 
                 if src != 0 {
@@ -156,10 +156,10 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 7 != res & 1);
 
-                self.write_src_to_dest_8(Operand::MEMORY, res);
+                self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
-                let dest = self.resolve_src_16(Operand::MEMORY);
+                let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let res = dest.rotate_right(src as u32);
 
                 if src != 0 {
@@ -168,18 +168,18 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 15 != res & 1);
 
-                self.write_src_to_dest_16(Operand::MEMORY, res);
+                self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
     }
 
-    pub fn rorc(&mut self, code: u8, mode: Mode) {
+    pub fn rorc(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
         match mode {
             Mode::M8 => {
-                let dest = self.resolve_src_8(Operand::MEMORY);
+                let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let mut res = dest;
                 let mut old_msb = res >> 7;
 
@@ -192,10 +192,10 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 7 != old_msb);
 
-                self.write_src_to_dest_8(Operand::MEMORY, res);
+                self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
-                let dest = self.resolve_src_16(Operand::MEMORY);
+                let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let mut res = dest;
                 let mut old_msb = res >> 15;
 
@@ -208,18 +208,18 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::OVERFLOW, res >> 15 != old_msb);
 
-                self.write_src_to_dest_16(Operand::MEMORY, res);
+                self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
     }
 
-    pub fn shl(&mut self, code: u8, mode: Mode) {
+    pub fn shl(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
         match mode {
             Mode::M8 => {
-                let dest = self.resolve_src_8(Operand::MEMORY);
+                let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let res = dest << src;
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -228,10 +228,10 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::CARRY, dest << (src - 1) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res));
 
-                self.write_src_to_dest_8(Operand::MEMORY, res);
+                self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
-                let dest = self.resolve_src_16(Operand::MEMORY);
+                let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let res = dest << src;
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -240,18 +240,18 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::CARRY, dest << (src - 1) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res as u8));
 
-                self.write_src_to_dest_16(Operand::MEMORY, res);
+                self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
     }
 
-    pub fn shr(&mut self, code: u8, mode: Mode) {
+    pub fn shr(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
         match mode {
             Mode::M8 => {
-                let dest = self.resolve_src_8(Operand::MEMORY);
+                let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let res = dest >> src;
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -260,10 +260,10 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res));
 
-                self.write_src_to_dest_8(Operand::MEMORY, res);
+                self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
-                let dest = self.resolve_src_16(Operand::MEMORY);
+                let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let res = dest >> src;
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -272,18 +272,18 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res as u8));
 
-                self.write_src_to_dest_16(Operand::MEMORY, res);
+                self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
     }
 
-    pub fn shra(&mut self, code: u8, mode: Mode) {
+    pub fn shra(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
         match mode {
             Mode::M8 => {
-                let dest = self.resolve_src_8(Operand::MEMORY);
+                let dest = self.resolve_src_8(Operand::MEMORY, extra);
                 let res = (dest as i8 >> src) as u8;
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -292,10 +292,10 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res));
 
-                self.write_src_to_dest_8(Operand::MEMORY, res);
+                self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
-                let dest = self.resolve_src_16(Operand::MEMORY);
+                let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let res = (dest as i16 >> src) as u16;
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -304,24 +304,24 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res as u8));
 
-                self.write_src_to_dest_16(Operand::MEMORY, res);
+                self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
     }
 
-    pub fn test(&mut self, op1: Operand, op2: Operand, mode: Mode) {
+    pub fn test(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                let a = self.resolve_src_8(op1);
-                let b = self.resolve_src_8(op2);
+                let a = self.resolve_src_8(op1, extra);
+                let b = self.resolve_src_8(op2, extra);
                 let res = a & b;
 
                 self.update_flags_bitwise_8(res);
             }
             Mode::M16 => {
-                let a = self.resolve_src_16(op1);
-                let b = self.resolve_src_16(op2);
+                let a = self.resolve_src_16(op1, extra);
+                let b = self.resolve_src_16(op2, extra);
                 let res = a & b;
 
                 self.update_flags_bitwise_16(res);
@@ -330,25 +330,25 @@ impl V30MZ {
         }
     }
 
-    pub fn xor(&mut self, op1: Operand, op2: Operand, mode: Mode) {
+    pub fn xor(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                let a = self.resolve_src_8(op1);
-                let b = self.resolve_src_8(op2);
+                let a = self.resolve_src_8(op1, extra);
+                let b = self.resolve_src_8(op2, extra);
                 let res = a ^ b;
 
                 self.update_flags_bitwise_8(res);
 
-                self.write_src_to_dest_8(op1, res);
+                self.write_src_to_dest_8(op1, res, extra);
             }
             Mode::M16 => {
-                let a = self.resolve_src_16(op1);
-                let b = self.resolve_src_16(op2);
+                let a = self.resolve_src_16(op1, extra);
+                let b = self.resolve_src_16(op2, extra);
                 let res = a ^ b;
 
                 self.update_flags_bitwise_16(res);
 
-                self.write_src_to_dest_16(op1, res);
+                self.write_src_to_dest_16(op1, res, extra);
             }
             _ => unreachable!(),
         }
@@ -370,7 +370,7 @@ mod test {
         soc.get_cpu().AW = 0xFE;
         soc.get_cpu().CW = 0xEF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xFF);
     }
 
@@ -383,7 +383,7 @@ mod test {
         soc.get_cpu().AW = 0xFFEE;
         soc.get_cpu().CW = 0xEEFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xFFFF);
     }
     
@@ -396,7 +396,7 @@ mod test {
         soc.get_cpu().AW = 0xFE;
         soc.get_cpu().CW = 0xEF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xEE);
     }
 
@@ -409,7 +409,7 @@ mod test {
         soc.get_cpu().AW = 0xFFEE;
         soc.get_cpu().CW = 0xEEFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xEEEE);
     }
 
@@ -421,7 +421,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -434,7 +434,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -447,7 +447,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x7F);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -460,7 +460,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x7FFF);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -473,7 +473,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -486,7 +486,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFC);
         assert!(soc.get_cpu().PSW.contains(CpuStatus::CARRY))
     }
@@ -499,7 +499,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFD);
     }
 
@@ -511,7 +511,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFD);
     }
 
@@ -523,7 +523,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0x7F;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xBF);
     }
 
@@ -535,7 +535,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0x7FFF;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0xBFFF);
     }
 
@@ -547,7 +547,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x01);
     }
 
@@ -559,7 +559,7 @@ mod test {
         ]);
         soc.get_cpu().AW = 0xFFFE;
 
-        soc.tick();
+        soc.tick_ignore_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x0001);
     }
 }
