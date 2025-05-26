@@ -1,3 +1,5 @@
+use std::env;
+
 use cartridge::Mapper;
 use soc::SoC;
 
@@ -13,13 +15,15 @@ pub mod cartridge;
 pub mod cpu;
 
 fn main() {
-    let (color, sram, rom, mapper, rewrittable) = parse_rom("klonoa");
+    let args: Vec<_> = env::args().collect();
+    let game = if args.len() > 1 {&args[1]} else {&"klonoa".to_string()};
+    let (color, sram, rom, mapper, rewrittable) = parse_rom(game);
     let mut soc = SoC::new(color, sram, rom, mapper, rewrittable);
     soc.run(1000);
 }
 
 fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool) {
-    let rom = std::fs::read(format!("{}.ws", game)).unwrap();
+    let rom = std::fs::read(format!("{}.ws", game)).or_else(|_| {std::fs::read(format!("{}.wsc", game))}).unwrap();
     let footer = rom.last_chunk::<16>().unwrap();
     let color = footer[0x7] & 1 != 0;
     let (ram_size, rewrittable) = match footer[0xB] {

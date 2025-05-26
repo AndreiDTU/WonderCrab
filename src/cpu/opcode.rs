@@ -48,6 +48,10 @@ impl OpCode {
     pub fn two_byte_with_cycles(code: u8, op1: Operand, op2: Operand, mode: Mode, cycles: u8, extra: u8) -> Self {
         Self {code, name: "TWO".to_string(), op1, op2, mode, op3: None, cycles, extra}
     }
+
+    pub fn nop(code: u8) -> Self {
+        Self {code, name: "NOP".to_string(), op1: Operand::NONE, op2: Operand::NONE, mode: Mode::M16, op3: None, cycles: 1, extra: 0}
+    }
 }
 
 impl SubOpCode {
@@ -78,7 +82,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0x0C, "OR",      Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M8,  1,  0),
         OpCode::one_byte(0x0D, "OR",      Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M16, 1,  0),
         OpCode::one_byte(0x0E, "PUSH",    Operand::NONE,        Operand::SEGMENT,     Mode::M16, 2,  0),
-        OpCode::invalid(0x0F),
+        OpCode::nop(0x0F),
 
         OpCode::one_byte(0x10, "ADDC",    Operand::MEMORY,      Operand::REGISTER,    Mode::M8,  1,  2),
         OpCode::one_byte(0x11, "ADDC",    Operand::MEMORY,      Operand::REGISTER,    Mode::M16, 1,  2),
@@ -173,11 +177,11 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0x60, "PUSH",    Operand::NONE,        Operand::NONE,        Mode::M16, 9,  0),
         OpCode::one_byte(0x61, "POP",     Operand::NONE,        Operand::NONE,        Mode::M16, 8,  0),
         OpCode::one_byte(0x62, "CHKIND",  Operand::REGISTER,    Operand::MEMORY,      Mode::M32, 13, 7),
-        OpCode::invalid(0x63),
-        OpCode::invalid(0x64),
-        OpCode::invalid(0x65),
-        OpCode::invalid(0x66),
-        OpCode::invalid(0x67),
+        OpCode::nop(0x63),
+        OpCode::nop(0x64),
+        OpCode::nop(0x65),
+        OpCode::nop(0x66),
+        OpCode::nop(0x67),
 
         OpCode::one_byte(0x68, "PUSH",    Operand::NONE,        Operand::IMMEDIATE,   Mode::M16, 1,  0),
         OpCode::three_term(0x69, "MUL", Operand::REGISTER, Operand::MEMORY, Operand::IMMEDIATE,   Mode::M16, 3, 1),
@@ -206,10 +210,10 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0x7E, "BLE",     Operand::NONE,        Operand::IMMEDIATE_S, Mode::M16, 1,  3),
         OpCode::one_byte(0x7F, "BGT",     Operand::NONE,        Operand::IMMEDIATE_S, Mode::M16, 1,  3),
 
-        OpCode::two_byte(0x80, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
-        OpCode::two_byte(0x81, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
-        OpCode::two_byte(0x82, Operand::MEMORY, Operand::IMMEDIATE, Mode::M8),
-        OpCode::two_byte(0x83, Operand::MEMORY, Operand::IMMEDIATE_S, Mode::M8),
+        OpCode::two_byte(0x80, Operand::MEMORY, Operand::IMMEDIATE,   Mode::M8 ),
+        OpCode::two_byte(0x81, Operand::MEMORY, Operand::IMMEDIATE,   Mode::M16),
+        OpCode::two_byte(0x82, Operand::MEMORY, Operand::IMMEDIATE,   Mode::M8 ),
+        OpCode::two_byte(0x83, Operand::MEMORY, Operand::IMMEDIATE_S, Mode::M16),
         OpCode::one_byte(0x84, "TEST",    Operand::MEMORY,      Operand::REGISTER,    Mode::M8,  1,  1),
         OpCode::one_byte(0x85, "TEST",    Operand::MEMORY,      Operand::REGISTER,    Mode::M16, 1,  1),
         OpCode::one_byte(0x86, "XCH",     Operand::MEMORY,      Operand::REGISTER,    Mode::M8,  3,  2),
@@ -253,12 +257,12 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
 
         OpCode::one_byte(0xA8, "TEST",    Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M8,  1,  0),
         OpCode::one_byte(0xA9, "TEST",    Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M16, 1,  0),
-        OpCode::one_byte(0xAA, "STMB",    Operand::NONE,        Operand::ACCUMULATOR, Mode::M8,  1,  0),
-        OpCode::one_byte(0xAB, "STMW",    Operand::NONE,        Operand::ACCUMULATOR, Mode::M16, 1,  0),
-        OpCode::one_byte(0xAC, "LDMB",    Operand::ACCUMULATOR, Operand::NONE,        Mode::M8,  1,  0),
-        OpCode::one_byte(0xAD, "LDMW",    Operand::ACCUMULATOR, Operand::NONE,        Mode::M16, 1,  0),
-        OpCode::one_byte(0xAE, "CMPMB",   Operand::NONE,        Operand::ACCUMULATOR, Mode::M8,  1,  0),
-        OpCode::one_byte(0xAF, "CMPMW",   Operand::NONE,        Operand::ACCUMULATOR, Mode::M16, 1,  0),
+        OpCode::one_byte(0xAA, "STMB",    Operand::NONE,        Operand::ACCUMULATOR, Mode::M8,  3,  6),
+        OpCode::one_byte(0xAB, "STMW",    Operand::NONE,        Operand::ACCUMULATOR, Mode::M16, 3,  6),
+        OpCode::one_byte(0xAC, "LDMB",    Operand::ACCUMULATOR, Operand::NONE,        Mode::M8,  3,  6),
+        OpCode::one_byte(0xAD, "LDMW",    Operand::ACCUMULATOR, Operand::NONE,        Mode::M16, 3,  6),
+        OpCode::one_byte(0xAE, "CMPMB",   Operand::NONE,        Operand::ACCUMULATOR, Mode::M8,  4,  9),
+        OpCode::one_byte(0xAF, "CMPMW",   Operand::NONE,        Operand::ACCUMULATOR, Mode::M16, 4,  9),
 
         OpCode::one_byte(0xB0, "MOV",     Operand::REGISTER,    Operand::IMMEDIATE,   Mode::M8,  1,  0),
         OpCode::one_byte(0xB1, "MOV",     Operand::REGISTER,    Operand::IMMEDIATE,   Mode::M8,  1,  0),
