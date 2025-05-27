@@ -40,7 +40,7 @@ impl DMA {
     }
 
     pub fn is_enabled(&mut self) -> bool {
-        if !self.io_bus.borrow_mut().color_mode() {return  false}
+        if !self.io_bus.borrow_mut().color_mode() {return false}
         
         let byte = self.read_io(0x48);
         self.dir = byte & 0x40 != 0;

@@ -25,7 +25,7 @@ pub trait IOBusConnection {
 
 impl IOBusConnection for IOBus {
     fn read_io(&mut self, addr: u16) -> u8 {
-        let Some(port) = Self::check_open_bus(addr) else {return 0x90};
+        let Some(port) = Self::check_open_bus(addr) else {return Self::open_bus()};
 
         match port {
             // Lowest bit of GDMA_SOURCE_L is always clear

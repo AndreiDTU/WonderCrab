@@ -55,8 +55,10 @@ impl SoC {
     }
 
     pub fn tick(&mut self) {
-        if self.dma.is_enabled() {
-            self.dma.start_op();
+        if self.dma.cycles == 0 {
+            if self.dma.is_enabled() {
+                self.dma.start_op();
+            }
         }
 
         if self.dma.cycles > 0 {
