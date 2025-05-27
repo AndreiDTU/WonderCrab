@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::cartridge::Cartridge;
+use crate::{cartridge::Cartridge, display::PaletteFormat};
 
 pub struct IOBus {
     ports: [u8; 0x100],
@@ -124,6 +124,19 @@ impl IOBus {
 
     pub fn color_mode(&mut self) -> bool {
         self.read_io(0x60) >> 7 != 0
+    }
+
+    pub fn pallete_format(&mut self) -> PaletteFormat {
+        if !self.color_mode() {
+            PaletteFormat::PLANAR_2BPP
+        } else {
+            match self.read_io(0x60) {
+                0b100 | 0b101 => PaletteFormat::PLANAR_2BPP,
+                0b110 => PaletteFormat::PLANAR_4BPP,
+                0b111 => PaletteFormat::PACKED_4BPP,
+                _ => unreachable!()
+            }
+        }
     }
 
     pub fn color_setup(&mut self) {

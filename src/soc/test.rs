@@ -9,8 +9,9 @@ impl SoC {
         let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 
-        Self {cpu, dma, mem_bus, io_bus}
+        Self {cpu, dma, mem_bus, io_bus, display}
     }
 
     pub fn set_wram(&mut self, wram: Vec<u8>) {

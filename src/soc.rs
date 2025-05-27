@@ -1,11 +1,12 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, dma::DMA};
+use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA};
 
 pub struct SoC {
     // COMPONENTS
     cpu: V30MZ,
     dma: DMA,
+    display: Display,
 
     // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
@@ -41,11 +42,12 @@ impl SoC {
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 
         if color {io_bus.borrow_mut().color_setup()}
         cpu.reset();
 
-        Self {cpu, dma, mem_bus, io_bus}
+        Self {cpu, dma, display, mem_bus, io_bus}
     }
 
     pub fn run(&mut self, cycles: usize) {
@@ -66,6 +68,8 @@ impl SoC {
         } else {
             self.cpu.tick();
         }
+
+        self.display.tick();
     }
 }
 
