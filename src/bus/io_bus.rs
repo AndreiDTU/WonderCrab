@@ -25,14 +25,7 @@ pub trait IOBusConnection {
 
 impl IOBusConnection for IOBus {
     fn read_io(&mut self, addr: u16) -> u8 {
-        if addr & 0x0100 != 0 {
-            return 0x90
-        }
-
-        let port = addr as u8;
-        if addr > 0xFF && port > 0xB8 {
-            return 0x90
-        }
+        let Some(port) = Self::check_open_bus(addr) else {return 0x90};
 
         match port {
             // Lowest bit of GDMA_SOURCE_L is always clear
@@ -84,14 +77,7 @@ impl IOBusConnection for IOBus {
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
-        if addr & 0x0100 != 0 {
-            return;
-        }
-
-        let port = addr as u8;
-        if addr > 0xFF && port > 0xB8 {
-            return;
-        }
+        let Some(port) = Self::check_open_bus(addr) else {return};
 
         match port {
             // Lowest bit of GDMA_SOURCE_L is always clear
@@ -146,5 +132,18 @@ impl IOBus {
 
     pub fn open_bus() -> u8 {
         0x90
+    }
+
+    fn check_open_bus(addr: u16) -> Option<u8> {
+        if addr & 0x0100 != 0 {
+            return None;
+        }
+
+        let port = addr as u8;
+        if addr > 0xFF && port > 0xB8 {
+            return None;
+        }
+
+        return Some(port);
     }
 }
