@@ -6,13 +6,15 @@ pub struct SoC {
     // COMPONENTS
     cpu: V30MZ,
     dma: DMA,
-    display: Display,
+    display: Box<Display>,
 
     // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
 
     // I/O
     io_bus: Rc<RefCell<IOBus>>,
+
+    cycles: u32,
 }
 
 impl MemBusConnection for SoC {
@@ -42,21 +44,15 @@ impl SoC {
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
-        let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus)));
 
         if color {io_bus.borrow_mut().color_setup()}
         cpu.reset();
 
-        Self {cpu, dma, display, mem_bus, io_bus}
+        Self {cpu, dma, display, mem_bus, io_bus, cycles: 0}
     }
 
-    pub fn run(&mut self, cycles: usize) {
-        for _ in 0..cycles {
-            self.tick();
-        }
-    }
-
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self) -> bool {
         if self.dma.cycles == 0 {
             if self.dma.is_enabled() {
                 self.dma.start_op();
@@ -70,6 +66,17 @@ impl SoC {
         }
 
         self.display.tick();
+
+        if self.cycles == 40703 {
+            self.cycles = 0;
+            return true;
+        }
+        self.cycles += 1;
+        return false;
+    }
+
+    pub fn get_lcd(&mut self) -> Rc<RefCell<[(u8, u8, u8); 224 * 144]>> {
+        Rc::new(RefCell::new(*self.display.lcd))
     }
 }
 

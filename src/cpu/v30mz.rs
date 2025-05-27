@@ -143,7 +143,7 @@ impl V30MZ {
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
 
-        println!("OP: {:02X} {}", op.code, op.name);
+        // println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
 
         if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
             self.rep = false;

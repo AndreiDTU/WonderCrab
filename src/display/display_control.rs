@@ -14,20 +14,20 @@ pub struct Display {
     screen_2_base: u16,
     sprite_base: u16,
 
-    screen_1_elements: [[ScreenElement; 32]; 32],
-    screen_2_elements: [[ScreenElement; 32]; 32],
+    screen_1_elements: Box<[[ScreenElement; 32]; 32]>,
+    screen_2_elements: Box<[[ScreenElement; 32]; 32]>,
 
-    screen_1_tiles: [[[[u8; 8]; 8]; 32]; 32],
-    screen_2_tiles: [[[[u8; 8]; 8]; 32]; 32],
+    screen_1_tiles: Box<[[[[u8; 8]; 8]; 32]; 32]>,
+    screen_2_tiles: Box<[[[[u8; 8]; 8]; 32]; 32]>,
 
-    screen_1_pixels: [[(u8, u8, u8); 256]; 256],
-    screen_2_pixels: [[(u8, u8, u8); 256]; 256],
+    screen_1_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
+    screen_2_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
 
-    sprites: [SpriteElement; 128],
-    sprite_tiles: [[[u8; 8]; 8]; 128],
+    sprites: Box<[SpriteElement; 128]>,
+    sprite_tiles: Box<[[[u8; 8]; 8]; 128]>,
     sprite_counter: u8, finished_sprites: bool,
 
-    pub lcd: [(u8, u8, u8); 224 * 144],
+    pub lcd: Box<[(u8, u8, u8); 224 * 144]>,
 
     scanline: u8,
     cycle: u8,
@@ -62,11 +62,11 @@ impl Display {
 
             format,
             screen_1_base: 0, screen_2_base: 0, sprite_base: 0,
-            screen_1_elements: [[ScreenElement::dummy(); 32]; 32], screen_2_elements: [[ScreenElement::dummy(); 32]; 32],
-            screen_1_tiles: [[[[0; 8]; 8]; 32]; 32], screen_2_tiles: [[[[0; 8]; 8]; 32]; 32],
-            screen_1_pixels: [[(0, 0, 0); 256]; 256], screen_2_pixels: [[(0, 0, 0); 256]; 256],
-            sprites: [SpriteElement::dummy(); 128], sprite_tiles: [[[0; 8]; 8]; 128], sprite_counter: 0, finished_sprites: false,
-            lcd: [(0, 0, 0); 224 * 144],
+            screen_1_elements: Box::new([[ScreenElement::dummy(); 32]; 32]), screen_2_elements: Box::new([[ScreenElement::dummy(); 32]; 32]),
+            screen_1_tiles: Box::new([[[[0; 8]; 8]; 32]; 32]), screen_2_tiles: Box::new([[[[0; 8]; 8]; 32]; 32]),
+            screen_1_pixels: Box::new([[None; 256]; 256]), screen_2_pixels: Box::new([[None; 256]; 256]),
+            sprites: Box::new([SpriteElement::dummy(); 128]), sprite_tiles: Box::new([[[0; 8]; 8]; 128]), sprite_counter: 0, finished_sprites: false,
+            lcd: Box::new([(0, 0, 0); 224 * 144]),
         }
     }
 
@@ -148,7 +148,10 @@ impl Display {
 
         // Display pixels of previous scanline
         if self.scanline != 0 && self.scanline < 144 && self.cycle < 224 {
-            self.lcd[(self.cycle as usize) + (self.scanline as usize) * 144] = (0, 0, 0);
+            if self.cycle % 8 == 0 && self.scanline % 8 == 0 {
+                self.transform_tiles(self.cycle / 8, self.scanline / 8);
+            }
+            self.overlay_pixels();
         }
     }
 
@@ -169,6 +172,28 @@ impl Display {
 
     fn get_sprite_counter(&mut self) {
         self.sprite_counter = self.read_io(0x06) & 0x7F;
+    }
+
+    fn transform_tiles(&mut self, x: u8, y: u8) {
+        let tile1 = &mut self.screen_1_tiles[y as usize][x as usize];
+        let tile2 = &mut self.screen_2_tiles[y as usize][x as usize];
+        
+        let element1 = self.screen_1_elements[y as usize][x as usize];
+        let element2 = self.screen_2_elements[y as usize][x as usize];
+
+        if element1.vm {tile1.reverse()}
+        if element1.hm {
+            for row in tile1 {
+                row.reverse();
+            }
+        }
+
+        if element2.vm {tile2.reverse()}
+        if element2.hm {
+            for row in tile2 {
+                row.reverse();
+            }
+        }
     }
 
     fn read_tile(&mut self, index: u16, format: PaletteFormat) -> [[u8; 8]; 8] {
@@ -260,30 +285,7 @@ impl Display {
         }
     }
 
-    fn fetch_pixel_color(&mut self, palette: u8, pixel: u8) -> Option<(u8, u8, u8)> {
-        match self.format {
-            PaletteFormat::PLANAR_2BPP => {
-                if palette < 4 && pixel == 0 {
-                    return None;
-                }
-
-                Some(if self.io_bus.borrow_mut().color_mode() {
-                    self.get_color_palette(palette)[pixel as usize]
-                } else {
-                    self.get_monochrome_palette(palette)[pixel as usize]
-                })
-            },
-            PaletteFormat::PLANAR_4BPP | PaletteFormat::PACKED_4BPP => {
-                if pixel == 0 {
-                    return None;
-                }
-
-                Some(self.get_color_palette(palette)[pixel as usize])
-            },
-        }
-    }
-
-    fn resolve_pixel_color(&mut self) -> (u8, u8, u8) {
+    fn overlay_pixels(&mut self) {
         let (lo, hi) = self.io_bus.borrow_mut().read_io_16(0x00);
         let word = u16::from_le_bytes([lo, hi]);
 
@@ -305,7 +307,70 @@ impl Display {
             (color, color, color)   
         };
 
-        todo!()
+        if scr1 {
+            let (scroll_1_x, scroll_1_y) = self.io_bus.borrow_mut().read_io_16(0x10);
+
+            let (y1, x1) = (self.scanline.wrapping_add(scroll_1_y) as usize, self.cycle.wrapping_add(scroll_1_x) as usize);
+
+            let palette = self.screen_1_elements[y1 / 8][x1 / 8].palette;
+            let raw_px = self.screen_1_tiles[y1 / 8][x1 / 8][y1][x1];
+
+            self.screen_1_pixels[self.scanline as usize][self.cycle as usize] = self.fetch_pixel_color(palette, raw_px);
+        }
+
+        if scr2 {
+            self.screen_2_pixels[self.scanline as usize][self.cycle as usize] = self.apply_scr2_window(s2we, s2wc);
+        }
+
+        self.lcd[(self.cycle as usize) + (self.scanline as usize) * 224] = 
+            if let Some(scr2_px) = self.screen_2_pixels[self.scanline as usize][self.cycle as usize] {scr2_px}
+            else if let Some(scr1_px) = self.screen_1_pixels[self.scanline as usize][self.cycle as usize] {scr1_px}
+            else {bg_color}
+    }
+
+    fn apply_scr2_window(&mut self, s2we: bool, s2wc: bool) -> Option<(u8, u8, u8)> {
+        if s2we {
+            let (x1, x2) = (self.read_io(0x08), self.read_io(0x0A));
+            if x2 < x1 {return None}
+            let (y1, y2) = (self.read_io(0x09), self.read_io(0x0B));
+            if y2 < y1 {return None}
+
+            if !(s2wc == (x1..=x2).contains(&self.cycle) && s2wc == (y1..=y2).contains(&self.scanline)) {
+                return None;
+            }
+        }
+
+        let (scroll_2_x, scroll_2_y) = self.io_bus.borrow_mut().read_io_16(0x12);
+
+        let (y2, x2) = (self.scanline.wrapping_add(scroll_2_y) as usize, self.cycle.wrapping_add(scroll_2_x) as usize);
+
+        let palette = self.screen_2_elements[y2 / 8][x2 / 8].palette;
+        let raw_px = self.screen_2_tiles[y2 / 8][x2 / 8][y2][x2];
+
+        self.fetch_pixel_color(palette, raw_px)
+    }
+
+    fn fetch_pixel_color(&mut self, palette: u8, raw_px: u8) -> Option<(u8, u8, u8)> {
+        match self.format {
+            PaletteFormat::PLANAR_2BPP => {
+                if palette < 4 && raw_px == 0 {
+                    return None;
+                }
+
+                Some(if self.io_bus.borrow_mut().color_mode() {
+                    self.get_color_palette(palette)[raw_px as usize]
+                } else {
+                    self.get_monochrome_palette(palette)[raw_px as usize]
+                })
+            },
+            PaletteFormat::PLANAR_4BPP | PaletteFormat::PACKED_4BPP => {
+                if raw_px == 0 {
+                    return None;
+                }
+
+                Some(self.get_color_palette(palette)[raw_px as usize])
+            },
+        }
     }
 
     fn get_monochrome_palette(&mut self, index: u8) -> [(u8, u8, u8); 4] {

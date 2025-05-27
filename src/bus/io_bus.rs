@@ -130,7 +130,7 @@ impl IOBus {
         if !self.color_mode() {
             PaletteFormat::PLANAR_2BPP
         } else {
-            match self.read_io(0x60) {
+            match (self.read_io(0x60) >> 5) & 0b111 {
                 0b100 | 0b101 => PaletteFormat::PLANAR_2BPP,
                 0b110 => PaletteFormat::PLANAR_4BPP,
                 0b111 => PaletteFormat::PACKED_4BPP,

@@ -1,6 +1,7 @@
 use std::env;
 
 use cartridge::Mapper;
+use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
 use soc::SoC;
 
 pub mod soc;
@@ -18,12 +19,45 @@ pub mod cartridge;
 #[allow(non_snake_case)]
 pub mod cpu;
 
-fn main() {
+fn main() -> Result<(), String> {
     let args: Vec<_> = env::args().collect();
     let game = if args.len() > 1 {&args[1]} else {&"klonoa".to_string()};
     let (color, sram, rom, mapper, rewrittable) = parse_rom(game);
+
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
+    let window = video_subsystem
+        .window("WonderSwan", 224, 144)
+        .position_centered()
+        .build().unwrap();
+
+    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+    let creator = canvas.texture_creator();
+    let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 224, 144).unwrap();
+    let mut event_pump = sdl_context.event_pump()?;
+    
     let mut soc = SoC::new(color, sram, rom, mapper, rewrittable);
-    soc.run(1000);
+    
+    loop {
+        if soc.tick() {
+            let mut frame = Vec::with_capacity(soc.get_lcd().borrow().len() * 3);
+            for &(r, g, b) in soc.get_lcd().borrow().iter() {
+                frame.push(r);
+                frame.push(g);
+                frame.push(b);
+}
+            texture.update(None,&frame, 224*3).unwrap();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
+
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => std::process::exit(0),
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool) {

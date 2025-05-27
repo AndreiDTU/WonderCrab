@@ -11,7 +11,7 @@ impl SoC {
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 
-        Self {cpu, dma, mem_bus, io_bus, display}
+        Self {cpu, dma, mem_bus, io_bus, display: Box::new(display), cycles: 0}
     }
 
     pub fn set_wram(&mut self, wram: Vec<u8>) {
