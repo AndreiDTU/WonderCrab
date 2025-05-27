@@ -1,5 +1,6 @@
 pub mod display_control;
 mod screen;
+mod sprite;
 
 #[derive(Clone, Copy)]
 pub enum PaletteFormat {

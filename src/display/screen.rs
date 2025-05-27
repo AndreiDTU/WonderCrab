@@ -1,8 +1,8 @@
 pub struct ScreenElement {
-    vm: bool,
-    hm: bool,
-    palette: u8,
-    tile: [[u8; 8]; 8]
+    pub vm: bool,
+    pub hm: bool,
+    pub palette: u8,
+    pub tile: [[u8; 8]; 8]
 }
 
 impl ScreenElement {
