@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{cartridge::Cartridge, display::PaletteFormat};
+use crate::{cartridge::Cartridge, display::PaletteFormat, display::display_control};
 
 pub struct IOBus {
     ports: [u8; 0x100],
@@ -49,6 +49,16 @@ impl IOBusConnection for IOBus {
                 output
             }
 
+            // VBLANK is always enabled in INT_ENABLE
+            0xB2 => self.ports[0xB2] | (1 << 6),
+
+            // Reading INT_CAUSE clears edge interrupts
+            0xB4 => {
+                let cause = self.ports[0xB4];
+                self.ports[0xB4] &= !0b1111_0010;
+                cause
+            }
+
             // INT_CAUSE_CLEAR is write-only
             0xB6 => 0,
 
@@ -80,6 +90,14 @@ impl IOBusConnection for IOBus {
         let Some(port) = Self::check_open_bus(addr) else {return};
 
         match port {
+            // DISPLAY_CTRL
+            0x00 | 0x01 => {
+                println!("{:02X} <- {:02X}", port, byte);
+                self.ports[port as usize] = byte;
+            }
+            // LCD_LINE is read-only
+            0x02 => {}
+
             // Lowest bit of GDMA_SOURCE_L is always clear
             0x41 => self.ports[0x41] = byte & 0xFE,
 
@@ -88,6 +106,30 @@ impl IOBusConnection for IOBus {
 
             // Lowest bit of GDMA_COUNTER is always clear
             0x47 => self.ports[0x47] = byte & 0xFE,
+
+            // Writing to HBLANK and VBLANK timers also sets the counters
+            0xA4 => {
+                self.ports[0xA4] = byte;
+                self.ports[0xA8] = byte;
+            }
+            0xA5 => {
+                self.ports[0xA5] = byte;
+                self.ports[0xA9] = byte;
+            }
+            0xA6 => {
+                self.ports[0xA6] = byte;
+                self.ports[0xAA] = byte;
+            }
+            0xA7 => {
+                self.ports[0xA7] = byte;
+                self.ports[0xAB] = byte;
+            }
+
+            // Counters are read-only
+            0xA8 | 0xA9 | 0xAA | 0xAB => {}
+
+            // VBLANK is always enabled in INT_ENABLE
+            0xB2 => self.ports[0xB2] = byte | (1 << 6),
 
             // INT_CAUSE is read-only
             0xB4 => {}
@@ -145,6 +187,41 @@ impl IOBus {
 
     pub fn open_bus() -> u8 {
         0x90
+    }
+
+    // Display functions
+    pub(crate) fn set_lcd_line(&mut self, line: u8) {
+        self.ports[0x02] = line;
+        if self.ports[0x02] == self.ports[0x03] {
+            self.ports[0xB4] |= (1 << 4) & self.ports[0xB2];
+        }
+    }
+
+    pub (crate) fn vblank(&mut self) {
+        self.ports[0xB4] |= 1 << 6;
+        if self.ports[0xA3] & 4 != 0 {
+            let counter = u16::from_le_bytes([self.ports[0xAA], self.ports[0xAB]]);
+            if counter == 0 {
+                self.ports[0xB4] |= (1 << 5) & self.ports[0xB2];
+                if self.ports[0xA3] & 8 != 0 {
+                    self.ports[0xAA] = self.ports[0xA6];
+                    self.ports[0xAB] = self.ports[0xA7];
+                }
+            }
+        }
+    }
+
+    pub (crate) fn hblank(&mut self) {
+        if self.ports[0xA3] & 1 != 0 {
+            let counter = u16::from_le_bytes([self.ports[0xA8], self.ports[0xA9]]);
+            if counter == 0 {
+                self.ports[0xB4] |= (1 << 7) & self.ports[0xB2];
+                if self.ports[0xA3] & 2 != 0 {
+                    self.ports[0xA8] = self.ports[0xA4];
+                    self.ports[0xA9] = self.ports[0xA5];
+                }
+            }
+        }
     }
 
     fn check_open_bus(addr: u16) -> Option<u8> {

@@ -128,8 +128,9 @@ impl V30MZ {
     }
 
     pub fn tick(&mut self) {
+        // println!("Tick: halt={}, cycles={}", self.halt, self.cycles);
         if self.cycles == 0 {
-            if !self.rep {self.poll_interrupts()};
+            if !self.rep {if self.poll_interrupts() {return}};
             if !self.halt {self.execute()};
         } else {
             self.cycles -= 1;
@@ -143,7 +144,7 @@ impl V30MZ {
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
 
-        // println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
+        // if true {println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name)};
 
         if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
             self.rep = false;
@@ -192,6 +193,7 @@ impl V30MZ {
                 self.rep = true;
                 self.rep_z = false;
                 self.finish_prefix();
+                return;
             }
 
             // REP
@@ -375,7 +377,13 @@ impl V30MZ {
                     3 => self.rorc(op.code, op.mode, op.extra),
                     4 => self.shl(op.code, op.mode, op.extra),
                     5 => self.shr(op.code, op.mode, op.extra),
-                    6 => todo!(),
+                    6 => {
+                        match op.mode {
+                            Mode::M8 => self.AW &= 0xFFEE,
+                            Mode::M16 => self.AW = 0,
+                            _ => unreachable!(),
+                        }
+                    }
                     7 => self.shra(op.code, op.mode, op.extra),
                     _ => unreachable!()
                 }
@@ -440,7 +448,7 @@ impl V30MZ {
                 self.cycles = self.base;
                 match sub_op.code {
                     0 => self.test(op.op1, op.op2, op.mode, sub_op.extra),
-                    1 => todo!(),
+                    1 => {}
                     2 => self.not(op.mode, sub_op.extra),
                     3 => self.neg(op.mode, sub_op.extra),
                     4 => self.mulu(op.mode, sub_op.extra),
@@ -500,7 +508,7 @@ impl V30MZ {
                     4 => self.branch_op(op.op1, op.mode, sub_op.extra),
                     5 => self.branch_op(op.op1, op.mode, sub_op.extra),
                     6 => self.push_op(Operand::MEMORY, sub_op.extra),
-                    7 => todo!(),
+                    7 => println!("not yet implemented"),
                     _ => unreachable!()
                 }
             }
@@ -508,7 +516,7 @@ impl V30MZ {
             // NOP
             0x0F | 0x63..=0x67 => {}
                 
-            code => panic!("Not yet implemented! Code: {:02X}", code),
+            code => println!("Not yet implemented! Code: {:02X}", code),
         };
 
         self.finish_op();
@@ -530,7 +538,7 @@ impl V30MZ {
     fn finish_op(&mut self) {
         if self.rep {
             self.CW = self.CW.wrapping_sub(1);
-            self.pc_displacement = 0;
+            // println!("CW: {}", self.CW);
         }
 
         if !self.rep || self.CW == 0 {
@@ -559,6 +567,7 @@ impl V30MZ {
 
     fn raise_exception(&mut self, vector: u8) {
         self.PC = self.PC.wrapping_add(self.pc_displacement);
+        self.pc_displacement = 0;
 
         self.push(self.PSW.bits());
         self.PSW.remove(CpuStatus::INTERRUPT);
@@ -567,19 +576,25 @@ impl V30MZ {
         self.push(self.PC);
 
         (self.PS, self.PC) = self.read_mem_32(vector as u32);
+        println!("Exception raised: vector={:02X}, PS={:04X}, PC={:04X}", vector, self.PS, self.PC);
     }
 
-    fn poll_interrupts(&mut self) {
+    fn poll_interrupts(&mut self) -> bool {
         let nmi = self.read_io(0xB7) != 0;
         let cause = self.read_io(0xB4);
+        // if cause != 0 {println!("Polling interrupts: NMI={}, cause={:02X}", nmi, cause)}
+
         if (cause != 0 || nmi) && self.mem_bus.borrow().owner != Owner::CPU {
             self.halt = false;
-            if (self.PSW.contains(CpuStatus::INTERRUPT)) || nmi {
+            if self.PSW.contains(CpuStatus::INTERRUPT) || nmi {
                 let source = cause.trailing_zeros() as u8;
                 let vector = self.read_io(0xB0).wrapping_add(source);
+                println!("Interrupt triggered: vector={:02X}", vector);
                 self.raise_exception(vector);
+                return true;
             }
         }
+        false
     }
 
     fn commit_writes(&mut self) {
@@ -595,7 +610,7 @@ impl V30MZ {
 
     #[cfg(test)]
     pub fn tick_ignore_cycles(&mut self) {
-        if !self.rep {self.poll_interrupts()};
+        if !self.rep {if self.poll_interrupts() {return}};
         if !self.halt {self.execute()};
         self.commit_writes();
     }

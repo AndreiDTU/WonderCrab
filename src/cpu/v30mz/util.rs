@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use crate::cpu::parity;
 
 use super::*;
@@ -433,13 +435,12 @@ impl V30MZ {
 
     // Returns Err if the current_op is shorter than the amount of bytes
     pub fn expect_op_bytes(&mut self, bytes: usize) {
-        if bytes as u16 > self.pc_displacement {
-            for addr in self.PC.wrapping_add(self.pc_displacement)..self.PC.wrapping_add(bytes as u16) {
-                let physical_address = self.get_physical_address(addr, self.PS);
-                let byte = self.read_mem(physical_address);
-                self.current_op.push(byte);
-                self.pc_displacement = bytes as u16;
-            }
+        while self.current_op.len() < bytes {
+            let addr = self.PC.wrapping_add(self.current_op.len() as u16);
+            let physical_address = self.get_physical_address(addr, self.PS);
+            let byte = self.read_mem(physical_address);
+            self.current_op.push(byte);
+            self.pc_displacement = self.current_op.len() as u16;
         }
     }
 

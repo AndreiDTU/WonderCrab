@@ -379,7 +379,7 @@ pub static SHIFT_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
         SubOpCode::normal(0b011, "RORC", 0, 0),
         SubOpCode::normal(0b100, "SHL",  0, 0),
         SubOpCode::normal(0b101, "SHR",  0, 0),
-        SubOpCode::normal(0b110, "INV",  0, 0),
+        SubOpCode::normal(0b110, "SHLA", 0, 0), // Actually just 0s ACC
         SubOpCode::normal(0b111, "SHRA", 0, 0),
     ]
 });
@@ -388,7 +388,7 @@ pub static SHIFT_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
 pub static GROUP_1: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "TEST", 1,  1),
-        SubOpCode::normal(0b001, "INV",  1,  0),
+        SubOpCode::normal(0b001, "NOP",  1,  0),
         SubOpCode::normal(0b010, "NOT",  1,  2),
         SubOpCode::normal(0b011, "NEG",  1,  2),
         SubOpCode::normal(0b100, "MULU", 3,  1),

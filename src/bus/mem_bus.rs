@@ -48,8 +48,8 @@ pub trait MemBusConnection {
 impl MemBusConnection for MemBus {
     fn read_mem(&mut self, addr: u32) -> u8 {
         match addr {
-            0x00000..=0x01FFF => self.wram[addr as usize],
-            0x02000..=0x0FFFF => {
+            0x00000..=0x03FFF => self.wram[addr as usize],
+            0x04000..=0x0FFFF => {
                 if self.io_bus.borrow_mut().color_mode() {
                     self.wram[addr as usize]
                 } else {
@@ -66,12 +66,15 @@ impl MemBusConnection for MemBus {
 
     fn write_mem(&mut self, addr: u32, byte: u8) {
         match addr {
-            0x00000..=0x01FFF => self.wram[addr as usize] = byte,
-            0x02000..=0x0FFFF => if self.io_bus.borrow_mut().color_mode() {self.wram[addr as usize] = byte}
+            0x00000..=0x03FFF => {
+                self.wram[addr as usize] = byte;
+                // println!("{:05X} <- {:02X}", addr, byte);
+            }
+            0x04000..=0x0FFFF => if self.io_bus.borrow_mut().color_mode() {self.wram[addr as usize] = byte}
             0x10000..=0x1FFFF => self.cartridge.borrow_mut().write_sram(addr, byte),
-            0x20000..=0x2FFFF => self.cartridge.borrow_mut().write_rom_1(addr, byte),
-            0x30000..=0x3FFFF => self.cartridge.borrow_mut().write_rom_1(addr, byte),
-            0x40000..=0xFFFFF => self.cartridge.borrow_mut().write_rom_ex(addr, byte),
+            0x20000..=0xFFFFF => {
+                // println!("Ignoring attempt to write to ROM {:05X} <- {:02X}", addr, byte),
+            }
             addr => panic!("Address {:08X} out of range! Attempting to write {:02X}", addr, byte),
         }
     }
@@ -92,7 +95,6 @@ impl MemBus {
         Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge}
     }
 
-    #[cfg(test)]
     pub fn test_build(io_bus: Rc<RefCell<IOBus>>, cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Self {owner: Owner::NONE, wram: [0; 0x10000], io_bus, cartridge}
     }

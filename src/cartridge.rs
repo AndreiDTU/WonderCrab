@@ -100,39 +100,7 @@ impl Cartridge {
         self.rom[offset as usize]
     }
 
-    pub fn write_rom_0(&mut self, addr: u32, byte: u8) {
-        let hi = match self.mapper {
-            Mapper::B_2001 => self.ROM_BANK_0_L as u32,
-            Mapper::B_2003 => u16::from_le_bytes([self.ROM_BANK_0_L, self.ROM_BANK_0_H]) as u32,
-        };
-        let lo = addr & 0xFFFF;
-
-        let offset = ((hi << 16) | lo) % self.rom.len() as u32;
-
-        self.rom[offset as usize] = byte;
-    }
-
-    pub fn write_rom_1(&mut self, addr: u32, byte: u8) {
-        let hi = match self.mapper {
-            Mapper::B_2001 => self.ROM_BANK_1_L as u32,
-            Mapper::B_2003 => u16::from_le_bytes([self.ROM_BANK_1_L, self.ROM_BANK_1_H]) as u32,
-        };
-        let lo = addr & 0xFFFF;
-
-        let offset = ((hi << 16) | lo) % self.rom.len() as u32;
-
-        self.rom[offset as usize] = byte;
-    }
-
-    pub fn write_rom_ex(&mut self, addr: u32, byte: u8) {
-        let hi = (self.LINEAR_ADDR_OFF as u32) << 20;
-        let offset = (hi | addr) % self.rom.len() as u32;
-
-        self.rom[offset as usize] = byte;
-    }
-
-    #[cfg(test)]
     pub fn test_build() -> Self {
-        Self::new(Mapper::B_2001, Vec::new(), Vec::new(), true)
+        Self::new(Mapper::B_2001, vec![0; 0x100000], vec![0; 0x100000], true)
     }
 }

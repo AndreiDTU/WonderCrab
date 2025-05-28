@@ -205,7 +205,7 @@ impl V30MZ {
         let dest = self.get_io_address(dest);
         match mode {
             Mode::M8 => self.write_io(dest, self.AW as u8),
-            Mode::M16 => self.write_io(dest.wrapping_add(1), (self.AW >> 8) as u8),
+            Mode::M16 => self.write_io_16(dest, self.AW),
             Mode::M32 => unreachable!()
         }
     }

@@ -21,13 +21,17 @@ pub mod cpu;
 
 fn main() -> Result<(), String> {
     let args: Vec<_> = env::args().collect();
-    let game = if args.len() > 1 {&args[1]} else {&"klonoa".to_string()};
-    let (color, sram, rom, mapper, rewrittable) = parse_rom(game);
+    let game = if args.len() > 1 {Some(&args[1])} else {None};
+
+    let mut soc = if let Some(game) = game {
+        let (color, sram, rom, mapper, rewrittable) = parse_rom(game);
+        SoC::new(color, sram, rom, mapper, rewrittable)
+    } else {SoC::test_build()};
 
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let window = video_subsystem
-        .window("WonderSwan", 224, 144)
+        .window("WonderSwan", 1792, 1152)
         .position_centered()
         .build().unwrap();
 
@@ -35,9 +39,7 @@ fn main() -> Result<(), String> {
     let creator = canvas.texture_creator();
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 224, 144).unwrap();
     let mut event_pump = sdl_context.event_pump()?;
-    
-    let mut soc = SoC::new(color, sram, rom, mapper, rewrittable);
-    
+
     loop {
         if soc.tick() {
             let mut frame = Vec::with_capacity(soc.get_lcd().borrow().len() * 3);

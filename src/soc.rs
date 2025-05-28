@@ -1,6 +1,6 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
-use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA};
+use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA};
 
 pub struct SoC {
     // COMPONENTS
@@ -65,10 +65,15 @@ impl SoC {
             self.cpu.tick();
         }
 
+        if self.mem_bus.borrow().owner == Owner::CPU {
+            return false;
+        }
+
         self.display.tick();
 
         if self.cycles == 40703 {
             self.cycles = 0;
+            self.io_bus.borrow_mut().write_io_16(0x00, 0xFF);
             return true;
         }
         self.cycles += 1;
@@ -77,6 +82,27 @@ impl SoC {
 
     pub fn get_lcd(&mut self) -> Rc<RefCell<[(u8, u8, u8); 224 * 144]>> {
         Rc::new(RefCell::new(*self.display.lcd))
+    }
+
+    pub fn get_display(&mut self) -> &mut Display {
+        &mut self.display
+    }
+    
+    pub fn test_build() -> Self {
+        let cartridge = Rc::new(RefCell::new(Cartridge::test_build()));
+        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge))));
+        let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus), Rc::clone(&cartridge))));
+        let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+
+        for i in 0..=0x3FFF {
+            mem_bus.borrow_mut().write_mem(i, 0x01);
+        }
+        io_bus.borrow_mut().write_io(0x00, 0xFF);
+        io_bus.borrow_mut().write_io(0x1F, 0xF8);
+
+        Self {cpu, dma, mem_bus, io_bus, display: Box::new(display), cycles: 0}
     }
 }
 
