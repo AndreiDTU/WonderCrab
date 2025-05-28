@@ -6,12 +6,16 @@ use super::*;
 
 impl V30MZ {
     pub fn branch(&mut self, cond: bool) {
+        // println!();
+        // println!("Branch address before: {:05X}", self.get_pc_address());
+        let displacement = self.expect_extra_byte() as i8 as i16;
         if cond {
-            let displacement = self.expect_extra_byte() as i8 as i16;
             self.PC = self.PC.wrapping_add(self.pc_displacement);
             self.pc_displacement = 0;
             self.PC = (self.PC as i16).wrapping_add(displacement) as u16;
         }
+        // println!("Branch address after: {:05X}", self.get_pc_address());
+        // println!()
     }
 
     pub fn expect_extra_byte(&mut self) -> u8 {
@@ -40,7 +44,7 @@ impl V30MZ {
         let old_sign = a & 0x8000;
         let new_sign = res & 0x8000;
 
-        self.PSW.set(CpuStatus::ZERO, res == 0);
+        self.PSW.set(CpuStatus::ZERO, a == b);
         self.PSW.set(CpuStatus::SIGN, new_sign != 0);
         self.PSW.set(CpuStatus::OVERFLOW, old_sign != b & 0x8000 && old_sign != new_sign);
         self.PSW.set(CpuStatus::CARRY, a < b);
@@ -457,7 +461,6 @@ impl V30MZ {
         // Use either the next byte padded with 0s or DW as the io_address
         match src {
             Operand::IMMEDIATE => {
-                // Need at least one operand byte to access immediate value
                 self.expect_op_bytes(2);
 
                 self.current_op[1] as u16

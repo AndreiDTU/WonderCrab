@@ -58,7 +58,7 @@ impl Display {
         let format = io_bus.borrow_mut().pallete_format();
         Self {
             mem_bus, io_bus,
-            scanline: 0, cycle: 0,
+            scanline: 26, cycle: 53,
 
             format,
             screen_1_base: 0, screen_2_base: 0, sprite_base: 0,
@@ -96,7 +96,8 @@ impl Display {
                 if self.cycle % 2 == 1 {
                     self.screen_1_tiles[row][col] = self.read_tile(self.screen_1_elements[row][col].tile_idx, self.format);
                 } else {
-                    self.screen_1_elements[row][col] = self.read_screen_element(self.screen_1_base.wrapping_add(((row * 32 + col) * 2) as u16));
+                    let address = self.screen_1_base | ((row as u16) << 4) | (col as u16);
+                    self.screen_1_elements[row][col] = self.read_screen_element(address);
                 }
             }
 
@@ -110,7 +111,8 @@ impl Display {
                 if self.cycle % 2 == 1 {
                     self.screen_2_tiles[row][col] = self.read_tile(self.screen_2_elements[row][col].tile_idx, self.format);
                 } else {
-                    self.screen_2_elements[row][col] = self.read_screen_element(self.screen_2_base.wrapping_add(((row * 32 + col) * 2) as u16));
+                    let address = self.screen_1_base | ((row as u16) << 4) | (col as u16);
+                    self.screen_2_elements[row][col] = self.read_screen_element(address);
                 }
             }
 
@@ -181,7 +183,7 @@ impl Display {
             self.io_bus.borrow_mut().set_lcd_line(self.scanline);
         }
 
-        if self.scanline == 255 {
+        if self.scanline == 159 {
             self.scanline = 0;
         }
 
@@ -354,16 +356,12 @@ impl Display {
             let raw_px = self.screen_1_tiles[y1 / 8][x1 / 8][y1 % 8][x1 % 8];
 
             self.screen_1_pixels[y][x] = self.fetch_pixel_color(palette, raw_px);
-            if self.screen_1_pixels[y][x] != None && self.screen_1_pixels[y][x] != Some((0, 0, 0)) {
-                println!("screen_1_pixels[{y}][{x}] set to {:?}", self.screen_1_pixels[y][x]);
-            }
+            // if true || (self.screen_1_pixels[y][x] != None && self.screen_1_pixels[y][x] != Some((0, 0, 0))) {println!("screen_1_pixels[{y}][{x}] set to {:?}", self.screen_1_pixels[y][x]);}
         }
 
         if scr2 {
             self.screen_2_pixels[y][x] = self.apply_scr2_window(s2we, s2wc, x as u8, y as u8);
-            if self.screen_2_pixels[y][x] != None && self.screen_2_pixels[y][x] != Some((0, 0, 0)) {
-                println!("screen_2_pixels[{y}][{x}] set to {:?}", self.screen_2_pixels[y][x]);
-            }
+            // if true || (self.screen_2_pixels[y][x] != None && self.screen_2_pixels[y][x] != Some((0, 0, 0))) {println!("screen_2_pixels[{y}][{x}] set to {:?}", self.screen_2_pixels[y][x]);}
         }
 
         self.lcd[x + y * 224] = 

@@ -2,6 +2,7 @@ use once_cell::sync::Lazy;
 
 use super::*;
 
+#[derive(Debug)]
 pub struct OpCode {
     pub code: u8,      // First byte
     pub name: String,  // Mnemonic
@@ -15,6 +16,7 @@ pub struct OpCode {
     pub extra: u8,  // Extra cycles (for block operations this represents cycles per rep)
 }
 
+#[derive(Debug)]
 pub struct SubOpCode {
     pub code: u8,
     pub name: String,

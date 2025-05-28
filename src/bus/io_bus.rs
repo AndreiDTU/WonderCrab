@@ -26,6 +26,7 @@ pub trait IOBusConnection {
 impl IOBusConnection for IOBus {
     fn read_io(&mut self, addr: u16) -> u8 {
         let Some(port) = Self::check_open_bus(addr) else {return Self::open_bus()};
+        // println!("Reading from {:02X}", port);
 
         match port {
             // Lowest bit of GDMA_SOURCE_L is always clear
@@ -47,6 +48,15 @@ impl IOBusConnection for IOBus {
                 let output = self.ports[0x48] & 0xC0;
                 self.ports[0x48] = 0;
                 output
+            }
+
+            // SYSTEM_CTRL_2 is color only
+            0x60 => {
+                if self.color_mode() {
+                    self.ports[0x60]
+                } else {
+                    Self::open_bus()
+                }
             }
 
             // VBLANK is always enabled in INT_ENABLE
@@ -88,11 +98,11 @@ impl IOBusConnection for IOBus {
 
     fn write_io(&mut self, addr: u16, byte: u8) {
         let Some(port) = Self::check_open_bus(addr) else {return};
+        // println!("{:02X} <- {:02X}", port, byte);
 
         match port {
             // DISPLAY_CTRL
             0x00 | 0x01 => {
-                println!("{:02X} <- {:02X}", port, byte);
                 self.ports[port as usize] = byte;
             }
             // LCD_LINE is read-only
@@ -165,7 +175,7 @@ impl IOBus {
     }
 
     pub fn color_mode(&mut self) -> bool {
-        self.read_io(0x60) >> 7 != 0
+        self.ports[0x60] >> 7 != 0
     }
 
     pub fn pallete_format(&mut self) -> PaletteFormat {
@@ -198,7 +208,7 @@ impl IOBus {
     }
 
     pub (crate) fn vblank(&mut self) {
-        self.ports[0xB4] |= 1 << 6;
+        self.ports[0xB4] |= (1 << 6) & self.ports[0xB2];
         if self.ports[0xA3] & 4 != 0 {
             let counter = u16::from_le_bytes([self.ports[0xAA], self.ports[0xAB]]);
             if counter == 0 {
@@ -207,6 +217,9 @@ impl IOBus {
                     self.ports[0xAA] = self.ports[0xA6];
                     self.ports[0xAB] = self.ports[0xA7];
                 }
+            } else {
+                let counter = counter - 1;
+                [self.ports[0xAA], self.ports[0xAB]] = counter.to_le_bytes();
             }
         }
     }
@@ -220,6 +233,9 @@ impl IOBus {
                     self.ports[0xA8] = self.ports[0xA4];
                     self.ports[0xA9] = self.ports[0xA5];
                 }
+            } else {
+                let counter = counter - 1;
+                [self.ports[0xA8], self.ports[0xA9]] = counter.to_le_bytes();
             }
         }
     }

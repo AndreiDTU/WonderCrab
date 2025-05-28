@@ -6,6 +6,7 @@ mod opcode;
 
 // An operand of NONE may also indicate that the operand
 // is better detected by means other than checking the enum
+#[derive(Debug)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum Operand {
@@ -20,6 +21,7 @@ pub enum Operand {
 }
 
 // Amount of bits to be read
+#[derive(Debug)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     M8,
@@ -27,11 +29,13 @@ pub enum Mode {
     M32,
 }
 
+#[derive(Debug)]
 pub enum MemOperand<'a> {
     Offset(u16),
     Register(RegisterType<'a>),
 }
 
+#[derive(Debug)]
 pub enum RegisterType<'a> {
     RW(&'a mut u16),
     RH(&'a mut u16),

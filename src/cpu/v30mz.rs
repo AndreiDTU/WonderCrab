@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use bitflags::bitflags;
 
-use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}};
+use crate::{assert_eq_hex, bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}};
 
 use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_1, GROUP_2, IMMEDIATE_GROUP, SHIFT_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
@@ -96,10 +96,18 @@ impl MemBusConnection for V30MZ {
 
 impl IOBusConnection for V30MZ {
     fn read_io(&mut self, addr: u16) -> u8 {
+        if self.current_op.len() > 0 {
+            // let op = &CPU_OP_CODES[self.current_op[0] as usize];
+            // println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
+        }
         self.io_bus.borrow_mut().read_io(addr)
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
+        if self.current_op.len() > 0 {
+            // let op = &CPU_OP_CODES[self.current_op[0] as usize];
+            // println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
+        }
         self.io_buffer.insert(addr, byte);
     }
 }
@@ -149,6 +157,15 @@ impl V30MZ {
         if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
             self.rep = false;
         }
+
+        /*if op.name == "CALL" {
+            dbg!(op);
+            dbg!(&self.current_op);
+            dbg!(self.get_pc_address());
+            println!()
+        }*/
+
+        // if self.get_pc_address() == 0xF9886 {assert_eq_hex!(self.DW, 0x5101);}
 
         self.base = op.cycles;
         self.cycles = self.base;
@@ -435,7 +452,10 @@ impl V30MZ {
             0xE9..=0xEB => self.branch_op(op.op1, op.mode, op.extra),
 
             // HALT
-            0xF4 => self.halt = true,
+            0xF4 => {
+                self.halt = true;
+                panic!("Halted at {:05X}", self.get_pc_address());
+            }
 
             // NOT1
             0xF5 => self.PSW.toggle(CpuStatus::CARRY),
@@ -519,16 +539,26 @@ impl V30MZ {
             code => println!("Not yet implemented! Code: {:02X}", code),
         };
 
+        if self.PSW.contains(CpuStatus::INTERRUPT) {println!("Interrupt enabled!")}
+
         self.finish_op();
     }
 
     pub fn reset(&mut self) {
-        self.DS0 = 0x0000;
+        self.AW = 0xFF85;
+        self.BW = 0x0040;
+        self.CW = 0x0004;
+        self.DW = 0x0005;
+        self.DS0 = 0xFE00;
         self.DS1 = 0x0000;
-        self.PC = 0x0000;
+        self.IX = 0x023D;
+        self.IY = 0x040D;
         self.PS = 0xFFFF;
-        self.PSW = CpuStatus::from_bits_truncate(0xF002);
+        self.PC = 0x0000;
+        self.BP = 0x0000;
+        self.SP = 0x2000;
         self.SS = 0x0000;
+        self.PSW = CpuStatus::from_bits_truncate(0xF082);
     }
 
     pub fn get_pc_address(&mut self) -> u32 {

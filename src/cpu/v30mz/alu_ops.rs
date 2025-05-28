@@ -18,7 +18,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra) as u32;
-                let src = self.resolve_src_16(op2, extra) as u32;
+                let src = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                } as u32;
 
                 let result = old_dest.wrapping_add(src);
 
@@ -48,7 +54,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra) as u32;
-                let src = self.resolve_src_16(op2, extra) as u32;
+                let src = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                } as u32;
 
                 let carry = self.PSW.contains(CpuStatus::CARRY) as u32;
 
@@ -145,6 +157,7 @@ impl V30MZ {
     }
 
     pub fn cmp(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
+        // println!("CMP address before: {:05X}", self.get_pc_address());
         match mode {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra);
@@ -156,7 +169,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra);
-                let src = self.resolve_src_16(op2, extra);
+                let src = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                };
 
                 let result = old_dest.wrapping_sub(src);
 
@@ -164,6 +183,7 @@ impl V30MZ {
             }
             Mode::M32 => unreachable!(),
         }
+        // println!("CMP address after: {:05X}", self.apply_segment(self.PC.wrapping_add(self.pc_displacement), self.PS));
     }
 
     pub fn dec(&mut self, op: Operand, mode: Mode, extra: u8) {

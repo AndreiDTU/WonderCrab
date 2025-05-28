@@ -123,6 +123,6 @@ impl Cartridge {
     }
 
     pub fn write_linear_addr_off(&mut self, byte: u8) {
-        self.LINEAR_ADDR_OFF = byte;
+        self.LINEAR_ADDR_OFF = byte & 0x3F;
     }
 }

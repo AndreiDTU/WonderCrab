@@ -94,6 +94,7 @@ impl Cartridge {
     }
 
     pub fn read_rom_ex(&self, addr: u32) -> u8 {
+        let addr = addr & 0xFFFFF;
         let hi = (self.LINEAR_ADDR_OFF as u32) << 20;
         let offset = (hi | addr) % self.rom.len() as u32;
 

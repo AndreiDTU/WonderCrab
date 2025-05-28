@@ -128,8 +128,7 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let word = self.read_mem_16(addr);
-                self.write_io(self.DW, (word >> 8) as u8);
-                self.write_io(self.DW, word as u8);
+                self.write_io_16(self.DW, word);
             }
             _ => unreachable!()
         }
