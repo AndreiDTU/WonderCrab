@@ -283,8 +283,7 @@ impl V30MZ {
     pub fn get_direct_mem_address(&mut self) -> u32 {
         self.expect_op_bytes(3);
 
-        let offset = u16::from_le_bytes([self.current_op[1], self.current_op[2]]);
-        self.apply_segment(offset, self.DS0)
+        u16::from_le_bytes([self.current_op[1], self.current_op[2]]) as u32
     }
 
     pub fn write_mem_operand_16(&mut self, src: u16, extra: u8) {

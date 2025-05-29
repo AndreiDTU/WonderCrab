@@ -49,8 +49,6 @@ impl SoC {
         if color {io_bus.borrow_mut().color_setup()}
         cpu.reset();
 
-        // io_bus.borrow_mut().write_io_16(0xC4, 0x5101);
-
         Self {cpu, dma, display, mem_bus, io_bus, cycles: 0}
     }
 

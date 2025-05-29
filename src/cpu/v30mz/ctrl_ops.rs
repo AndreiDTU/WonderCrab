@@ -127,11 +127,11 @@ impl V30MZ {
     }
 
     pub fn reti(&mut self) {
-        // println!("RETI address before: {:05X}", self.get_pc_address());
+        // println!("RETI before PC: {:04X} PS: {:04X}", self.PC, self.PS);
         self.PC = self.pop();
         self.PS = self.pop();
         self.PSW = CpuStatus::from_bits_truncate(self.pop());
         self.pc_displacement = 0;
-        // println!("RETI address after: {:05X}", self.get_pc_address());
+        // println!("RETI after PC: {:04X} PS: {:04X}", self.PC, self.PS);
     }
 }

@@ -604,8 +604,8 @@ impl V30MZ {
     }
 
     fn raise_exception(&mut self, vector: u8) {
+        self.PC = self.PC.wrapping_add(self.current_op.len() as u16);
         // println!("Exception raised: vector={:02X}. Pushing PSW={:016b} PS={:04X}, PC={:04X}", vector, self.PSW.bits(), self.PS, self.PC);
-        self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
 
         self.push(self.PSW.bits());
@@ -626,6 +626,7 @@ impl V30MZ {
         // if cause != 0 {println!("Polling interrupts: NMI={}, cause={:02X}", nmi, cause)}
 
         if (cause != 0 || nmi) && self.mem_bus.borrow().owner != Owner::CPU {
+            // if self.halt {println!("Returning from halt!")}
             self.halt = false;
             if self.PSW.contains(CpuStatus::INTERRUPT) || nmi {
                 let source = cause.trailing_zeros() as u8;

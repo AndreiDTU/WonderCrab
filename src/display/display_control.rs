@@ -58,7 +58,7 @@ impl Display {
         let format = io_bus.borrow_mut().pallete_format();
         Self {
             mem_bus, io_bus,
-            scanline: 26, cycle: 53,
+            scanline: 0, cycle: 0,
 
             format,
             screen_1_base: 0, screen_2_base: 0, sprite_base: 0,
@@ -89,14 +89,17 @@ impl Display {
                 self.get_sprite_base();
                 self.get_sprite_counter();
                 self.finished_sprites = false;
-                self.screen_1_elements[y][0] = self.read_screen_element(self.screen_1_base);
+
+                let row = y / 8;
+                let address = self.screen_1_base | ((row as u16) << 6);
+                self.screen_1_elements[row][0] = self.read_screen_element(address);
             }
             1..=63 => {
                 let (row, col) = (y / 8, x / 2);
                 if self.cycle % 2 == 1 {
                     self.screen_1_tiles[row][col] = self.read_tile(self.screen_1_elements[row][col].tile_idx, self.format);
                 } else {
-                    let address = self.screen_1_base | ((row as u16) << 4) | (col as u16);
+                    let address = self.screen_1_base | ((row as u16) << 6) | (col as u16 * 2);
                     self.screen_1_elements[row][col] = self.read_screen_element(address);
                 }
             }
@@ -111,7 +114,7 @@ impl Display {
                 if self.cycle % 2 == 1 {
                     self.screen_2_tiles[row][col] = self.read_tile(self.screen_2_elements[row][col].tile_idx, self.format);
                 } else {
-                    let address = self.screen_1_base | ((row as u16) << 4) | (col as u16);
+                    let address = self.screen_2_base | ((row as u16) << 6) | (col as u16 * 2);
                     self.screen_2_elements[row][col] = self.read_screen_element(address);
                 }
             }
@@ -158,6 +161,7 @@ impl Display {
                 self.cycle = 0;
                 self.scanline += 1;
                 self.io_bus.borrow_mut().set_lcd_line(self.scanline);
+                return;
             }
             _ => {}
         }
@@ -193,6 +197,7 @@ impl Display {
     fn get_screen_1_base(&mut self) {
         self.screen_1_base = ((self.io_bus.borrow_mut().read_io(0x07) & 0x0F) as u16) << 11;
         if !self.io_bus.borrow_mut().color_mode() {self.screen_1_base &= 0x3800}
+        // println!("Screen 1 base: {:014X}", self.screen_1_base);
     }
 
     fn get_screen_2_base(&mut self) {
@@ -326,19 +331,19 @@ impl Display {
         // println!("{}, {}", x, y);
         let (x, y) = (x as usize, y as usize);
         let (lo, hi) = self.io_bus.borrow_mut().read_io_16(0x00);
-        let word = u16::from_le_bytes([lo, hi]);
+        let lcd_ctrl = u16::from_le_bytes([lo, hi]);
 
-        let scr1  = word & 1 != 0;
-        let scr2  = (word >> 1) & 1 != 0;
-        let spr   = (word >> 2) & 1 != 0;
-        let sprwe = (word >> 3) & 1 != 0;
-        let s2we  = (word >> 4) & 1 != 0;
-        let s2wc  = (word >> 5) & 1 != 0;
+        let scr1  = lcd_ctrl & 1 != 0;
+        let scr2  = (lcd_ctrl >> 1) & 1 != 0;
+        let spr   = (lcd_ctrl >> 2) & 1 != 0;
+        let sprwe = (lcd_ctrl >> 3) & 1 != 0;
+        let s2we  = (lcd_ctrl >> 4) & 1 != 0;
+        let s2wc  = (lcd_ctrl >> 5) & 1 != 0;
 
         let bg_color = if self.io_bus.borrow_mut().color_mode() {
-            self.get_color_palette((word >> 12) as u8)[((word >> 8) & 0x0F) as usize]
+            self.get_color_palette((lcd_ctrl >> 12) as u8)[((lcd_ctrl >> 8) & 0x0F) as usize]
         } else {
-            let index = ((word >> 8) & 0x7) as u8;
+            let index = ((lcd_ctrl >> 8) & 0x7) as u8;
             let (port, shift) = (index / 2, index % 2);
             let color_raw = (self.read_io(0x1C + port as u16) >> shift * 4) & 0x0F;
             let color = 0xFF - 0x11 * color_raw;
@@ -352,8 +357,8 @@ impl Display {
 
             let (y1, x1) = (y.wrapping_add(scroll_1_y), x.wrapping_add(scroll_1_x));
 
-            let palette = self.screen_1_elements[y1 / 32][x1 / 32].palette;
-            let raw_px = self.screen_1_tiles[y1 / 32][x1 / 32][y1 % 8][x1 % 8];
+            let palette = self.screen_1_elements[y1 / 8][x1 / 8].palette;
+            let raw_px = self.screen_1_tiles[y1 / 8][x1 / 8][y1 % 8][x1 % 8];
 
             self.screen_1_pixels[y][x] = self.fetch_pixel_color(palette, raw_px);
             // if true || (self.screen_1_pixels[y][x] != None && self.screen_1_pixels[y][x] != Some((0, 0, 0))) {println!("screen_1_pixels[{y}][{x}] set to {:?}", self.screen_1_pixels[y][x]);}
@@ -433,7 +438,7 @@ impl Display {
     }
 
     fn get_color_palette(&mut self, index: u8) -> [(u8, u8, u8); 16] {
-        let base = 0x0FE00 + (index as u32) * 0x20;
+        let base = 0x0FE00 + (index as u32) * 32;
 
         std::array::from_fn(|i| {
             let word = self.read_mem_16(base + i as u32 * 2);
