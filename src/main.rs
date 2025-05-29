@@ -62,7 +62,8 @@ fn main() -> Result<(), String> {
                 frame.push(r);
                 frame.push(g);
                 frame.push(b);
-}
+            }
+
             texture.update(None,&frame, 224*3).unwrap();
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();

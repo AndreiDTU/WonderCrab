@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use bitflags::bitflags;
 
-use crate::{assert_eq_hex, bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}};
+use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}};
 
 use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_1, GROUP_2, IMMEDIATE_GROUP, SHIFT_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
@@ -537,7 +537,7 @@ impl V30MZ {
                     4 => self.branch_op(op.op1, op.mode, sub_op.extra),
                     5 => self.branch_op(op.op1, op.mode, sub_op.extra),
                     6 => self.push_op(Operand::MEMORY, sub_op.extra),
-                    7 => println!("not yet implemented"),
+                    7 => panic!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name),
                     _ => unreachable!()
                 }
             }
@@ -550,10 +550,7 @@ impl V30MZ {
 
         // if self.PSW.contains(CpuStatus::BREAK) {println!("BREAK set!")}
 
-        /* if self.SP != old_SP {
-            println!("{:05X}", self.get_pc_address());
-            println!("SP changed {:04X} -> {:04X}", old_SP, self.SP);
-        }*/
+        // if self.SP != old_SP {println!("SP changed {:04X} -> {:04X}", old_SP, self.SP);}
 
         self.finish_op();
     }

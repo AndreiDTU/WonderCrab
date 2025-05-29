@@ -57,7 +57,7 @@ impl V30MZ {
     }
 
     pub fn call(&mut self, op: Operand, mode: Mode, extra: u8) {
-        println!("CALL old PC = {:04X}", self.PC);
+        // println!("CALL old PC = {:04X}", self.PC);
         let old_PS = self.PS;
         let old_PC = self.PC;
 
@@ -67,7 +67,8 @@ impl V30MZ {
             self.push(old_PS);
         }
         self.push(old_PC.wrapping_add(self.current_op.len() as u16));
-        println!("CALL pushed: PC = {:04X}", old_PC.wrapping_add(self.current_op.len() as u16));
+        // println!("CALL pushed: PC = {:04X}", old_PC.wrapping_add(self.current_op.len() as u16));
+        // println!("New PC = {:04X}", self.PC);
     }
 
     pub fn chkind(&mut self, extra: u8) {

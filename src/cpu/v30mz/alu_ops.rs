@@ -520,7 +520,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra);
-                let src = self.resolve_src_16(op2, extra);
+                let src = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                };
 
                 let result = old_dest.wrapping_sub(src);
 
@@ -551,7 +557,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra);
-                let src = self.resolve_src_16(op2, extra);
+                let src = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                };
 
                 let carry = self.PSW.contains(CpuStatus::CARRY) as u16;
 

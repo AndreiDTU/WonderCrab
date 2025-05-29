@@ -126,7 +126,7 @@ impl V30MZ {
                 let dest = self.resolve_register_operand(r_bits, mode);
                 match dest {
                     RegisterType::RH(rh) => {
-                        println!("dest: {:04X} src: {:02X}", *rh, src);
+                        // println!("dest: {:04X} src: {:02X}", *rh, src);
                         *rh = swap_h(*rh, src)
                     },
                     RegisterType::RL(rl) => *rl = swap_l(*rl, src),
