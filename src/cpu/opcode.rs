@@ -36,7 +36,7 @@ impl OpCode {
     }
 
     pub fn invalid(code: u8) -> Self {
-        Self {code, name: "INV".to_string(), op1: Operand::NONE, op2: Operand::NONE, mode: Mode::M16, op3: None, cycles: 0, extra: 0}
+        Self {code, name: "INV".to_string(), op1: Operand::NONE, op2: Operand::NONE, mode: Mode::M16, op3: None, cycles: 1, extra: 0}
     }
 
     pub fn two_byte(code: u8, op1: Operand, op2: Operand, mode: Mode) -> Self {

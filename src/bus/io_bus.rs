@@ -1,11 +1,12 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{cartridge::Cartridge, display::PaletteFormat, display::display_control};
+use crate::{cartridge::Cartridge, display::{display_control, PaletteFormat}, keypad::Keypad};
 
 pub struct IOBus {
     ports: [u8; 0x100],
 
     cartridge: Rc<RefCell<Cartridge>>,
+    pub(in crate) keypad: Rc<RefCell<Keypad>>,
 }
 
 pub trait IOBusConnection {
@@ -67,6 +68,11 @@ impl IOBusConnection for IOBus {
                 let cause = self.ports[0xB4];
                 self.ports[0xB4] &= !0b1111_0010;
                 cause
+            }
+
+            // Reading from KEY_SCAN queries the keypad
+            0xB5 => {
+                self.ports[0xB5] | self.keypad.borrow().read_keys()
             }
 
             // INT_CAUSE_CLEAR is write-only
@@ -144,10 +150,21 @@ impl IOBusConnection for IOBus {
             // INT_CAUSE is read-only
             0xB4 => {}
 
+            // Writing to KEY_SCAN polls the keypad and potentially interrupts
+            0xB5 => {
+                let old_keys = self.keypad.borrow().read_keys();
+                self.ports[0xB5] = (self.ports[0xB5] & 0x0F) | (byte & 0x70);
+                self.keypad.borrow_mut().poll((byte & 0x70) >> 4);
+                if self.keypad.borrow().read_keys() & (!old_keys) != 0 {
+                    // println!("Keys pressed!");
+                    self.ports[0xB4] |= 0x02 & self.ports[0xB2];
+                }
+            }
+
             // INT_CAUSE_CLEAR clears bits of INT_CAUSE when written to
             0xB6 => {
                 self.ports[0xB6] = byte;
-                self.ports[0xB4] &= !self.ports[0xB6]
+                self.ports[0xB4] &= !byte;
             }
 
             // CARTRIDGE PORTS
@@ -170,8 +187,8 @@ impl IOBusConnection for IOBus {
 }
 
 impl IOBus {
-    pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
-        Self {ports: [0; 0x100], cartridge}
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>, keypad: Rc<RefCell<Keypad>>) -> Self {
+        Self {ports: [0; 0x100], cartridge, keypad}
     }
 
     pub fn color_mode(&mut self) -> bool {

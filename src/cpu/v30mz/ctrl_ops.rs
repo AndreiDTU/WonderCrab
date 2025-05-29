@@ -57,7 +57,7 @@ impl V30MZ {
     }
 
     pub fn call(&mut self, op: Operand, mode: Mode, extra: u8) {
-        // print!("CALL ");
+        println!("CALL old PC = {:04X}", self.PC);
         let old_PS = self.PS;
         let old_PC = self.PC;
 
@@ -67,7 +67,7 @@ impl V30MZ {
             self.push(old_PS);
         }
         self.push(old_PC.wrapping_add(self.current_op.len() as u16));
-        // println!("CALL pushed: PC = {:04X}", old_PC.wrapping_add(self.current_op.len() as u16));
+        println!("CALL pushed: PC = {:04X}", old_PC.wrapping_add(self.current_op.len() as u16));
     }
 
     pub fn chkind(&mut self, extra: u8) {
@@ -99,31 +99,33 @@ impl V30MZ {
     }
 
     pub fn retn(&mut self, op: Operand) {
-        // println!("RETN before PC: {:04X} PS: {:04X}", self.PC, self.PS);
-        self.PC = self.pop();
+        // println!("RETN before PC: {:04X} PS: {:04X} SP: {:04X}", self.PC, self.PS, self.SP);
+        let temp_pc = self.pop();
         let dest = match op {
             Operand::IMMEDIATE => self.expect_extra_word(),
             Operand::NONE => 0,
             _ => unreachable!(),
         };
         self.SP = self.SP.wrapping_add(dest);
+        self.PC = temp_pc;
         self.pc_displacement = 0;
-        // println!("RETN after PC: {:04X} PS: {:04X}", self.PC, self.PS);
+        // println!("RETN after PC: {:04X} PS: {:04X} SP: {:04X}", self.PC, self.PS, self.SP);
     }
 
     pub fn retf(&mut self, op: Operand) {
-        // println!("RETF address before: {:05X}", self.get_pc_address());
-        self.PC = self.pop();
-        self.PS = self.pop();
+        // println!("RETF before PC: {:04X} PS: {:04X} SP: {:04X}", self.PC, self.PS, self.SP);
+        let temp_pc = self.pop();
+        let temp_ps = self.pop();
         let dest = match op {
             Operand::IMMEDIATE => self.expect_extra_word(),
             Operand::NONE => 0,
             _ => unreachable!(),
         };
         self.SP = self.SP.wrapping_add(dest);
+        self.PC = temp_pc;
+        self.PS = temp_ps;
         self.pc_displacement = 0;
-        // println!("RETF address after: {:05X}", self.get_pc_address());
-        // println!()
+        // println!("RETF after PC: {:04X} PS: {:04X} SP: {:04X}", self.PC, self.PS, self.SP);
     }
 
     pub fn reti(&mut self) {

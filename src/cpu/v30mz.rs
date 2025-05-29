@@ -15,6 +15,7 @@ mod block_ops;
 
 bitflags! {
     // http://perfectkiosk.net/stsws.html
+    #[derive(Copy, Clone)]
     pub struct CpuStatus: u16 {
         const FIXED_ON_1  = 0x8000;
         const FIXED_ON_2  = 0x4000;
@@ -139,6 +140,9 @@ impl V30MZ {
 
     pub fn tick(&mut self) {
         // println!("Tick: halt={}, cycles={}", self.halt, self.cycles);
+        self.PSW = self.PSW.union(CpuStatus::from_bits_truncate(0xF002));
+        self.PSW.remove(CpuStatus::FIXED_OFF_1);
+        self.PSW.remove(CpuStatus::FIXED_OFF_2);
         if self.cycles == 0 {
             if !self.rep && !self.no_interrupt {if self.poll_interrupts() {return}};
             if !self.halt {self.execute()};
@@ -153,6 +157,8 @@ impl V30MZ {
         self.expect_op_bytes(1);
 
         let op = &CPU_OP_CODES[self.current_op[0] as usize];
+
+        // let old_SP = self.SP;
 
         // if true {println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name)};
 
@@ -457,7 +463,7 @@ impl V30MZ {
             // HALT
             0xF4 => {
                 self.halt = true;
-                // panic!("Halted at {:05X}", self.get_pc_address());
+                // println!("Halted at {:05X}", self.get_pc_address());
             }
 
             // NOT1
@@ -542,7 +548,12 @@ impl V30MZ {
             code => println!("Not yet implemented! Code: {:02X}", code),
         };
 
-        if self.PSW.contains(CpuStatus::BREAK) {println!("BREAK set!")}
+        // if self.PSW.contains(CpuStatus::BREAK) {println!("BREAK set!")}
+
+        /* if self.SP != old_SP {
+            println!("{:05X}", self.get_pc_address());
+            println!("SP changed {:04X} -> {:04X}", old_SP, self.SP);
+        }*/
 
         self.finish_op();
     }
@@ -569,16 +580,19 @@ impl V30MZ {
     }
 
     fn finish_op(&mut self) {
+        self.no_interrupt = false;
+
+        self.PSW = CpuStatus::from_bits_truncate(self.PSW.bits() | 0xF002);
         if self.rep {
             self.CW = self.CW.wrapping_sub(1);
             // println!("CW: {}", self.CW);
         }
 
         if !self.rep || self.CW == 0 {
-            self.rep = false;
-            self.PC = self.PC.wrapping_add(self.pc_displacement);
             self.mem_bus.borrow_mut().owner = Owner::NONE;
             self.segment_override = None;
+            self.rep = false;
+            self.PC = self.PC.wrapping_add(self.pc_displacement);
             if self.PSW.contains(CpuStatus::BREAK) {self.raise_exception(1)}
         }
 
@@ -588,11 +602,10 @@ impl V30MZ {
         if self.cycles == 0 {
             self.commit_writes();
         }
-
-        self.no_interrupt = false;
     }
 
     fn finish_prefix(&mut self) {
+        self.PSW = CpuStatus::from_bits_truncate(self.PSW.bits() | 0xF002);
         self.PC = self.PC.wrapping_add(1);
         self.current_op.clear();
         self.pc_displacement = 0;
@@ -604,7 +617,7 @@ impl V30MZ {
     }
 
     fn raise_exception(&mut self, vector: u8) {
-        self.PC = self.PC.wrapping_add(self.current_op.len() as u16);
+        self.PC = self.PC.wrapping_add(self.pc_displacement);
         // println!("Exception raised: vector={:02X}. Pushing PSW={:016b} PS={:04X}, PC={:04X}", vector, self.PSW.bits(), self.PS, self.PC);
         self.pc_displacement = 0;
 
@@ -630,6 +643,7 @@ impl V30MZ {
             self.halt = false;
             if self.PSW.contains(CpuStatus::INTERRUPT) || nmi {
                 let source = cause.trailing_zeros() as u8;
+                if source == 0x01 {println!("KEY interrupt")}
                 let vector = self.read_io(0xB0).wrapping_add(source);
                 // println!("Interrupt triggered: vector={:02X}", vector);
                 self.raise_exception(vector);

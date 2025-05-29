@@ -1,12 +1,14 @@
-use std::env;
+use std::{collections::HashMap, env};
 
 use cartridge::Mapper;
+use keypad::Keys;
 use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
 use soc::SoC;
 
 pub mod soc;
 pub mod bus;
 pub mod dma;
+pub mod keypad;
 
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
@@ -40,6 +42,19 @@ fn main() -> Result<(), String> {
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 224, 144).unwrap();
     let mut event_pump = sdl_context.event_pump()?;
 
+    let mut key_map = HashMap::new();
+    key_map.insert(Keycode::W, Keys::Y1);
+    key_map.insert(Keycode::D, Keys::Y2);
+    key_map.insert(Keycode::S, Keys::Y3);
+    key_map.insert(Keycode::A, Keys::Y4);
+    key_map.insert(Keycode::U, Keys::X1);
+    key_map.insert(Keycode::K, Keys::X2);
+    key_map.insert(Keycode::J, Keys::X3);
+    key_map.insert(Keycode::H, Keys::X4);
+    key_map.insert(Keycode::Return, Keys::Start);
+    key_map.insert(Keycode::Z, Keys::B);
+    key_map.insert(Keycode::X, Keys::A);
+
     loop {
         if soc.tick() {
             let mut frame = Vec::with_capacity(soc.get_lcd().borrow().len() * 3);
@@ -55,6 +70,20 @@ fn main() -> Result<(), String> {
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => std::process::exit(0),
+                    Event::KeyDown { keycode, .. } => {
+                        if let Some(key) = keycode {
+                            if let Some(key) = key_map.get(&key) {
+                                soc.io_bus.borrow_mut().keypad.borrow_mut().set_key(*key, true);
+                            }
+                        }
+                    }
+                    Event::KeyUp { keycode, .. } => {
+                        if let Some(key) = keycode {
+                            if let Some(key) = key_map.get(&key) {
+                                soc.io_bus.borrow_mut().keypad.borrow_mut().set_key(*key, false);
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }

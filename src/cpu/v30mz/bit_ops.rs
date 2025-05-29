@@ -14,9 +14,9 @@ impl V30MZ {
                 };
                 let res = a & b;
 
-                self.update_flags_bitwise_8(res);
-
                 self.write_src_to_dest_8(op1, res, extra);
+
+                self.update_flags_bitwise_8(res);
             }
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
@@ -29,9 +29,9 @@ impl V30MZ {
                 };
                 let res = a & b;
 
-                self.update_flags_bitwise_16(res);
-
                 self.write_src_to_dest_16(op1, res, extra);
+
+                self.update_flags_bitwise_16(res);
             }
             _ => unreachable!(),
         }
@@ -240,19 +240,19 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::ZERO, res == 0);
                 self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
                 self.PSW.set(CpuStatus::OVERFLOW, dest & 0x80 != res & 0x80);
-                self.PSW.set(CpuStatus::CARRY, dest << (src - 1) != 0);
+                self.PSW.set(CpuStatus::CARRY, dest.wrapping_shl(src.wrapping_sub(1) as u32) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res));
 
                 self.write_src_to_dest_8(Operand::MEMORY, res, extra);
             }
             Mode::M16 => {
                 let dest = self.resolve_src_16(Operand::MEMORY, extra);
-                let res = dest << src;
+                let res = dest.wrapping_shl(src as u32);
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
                 self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
                 self.PSW.set(CpuStatus::OVERFLOW, dest & 0x8000 != res & 0x8000);
-                self.PSW.set(CpuStatus::CARRY, dest << (src - 1) != 0);
+                self.PSW.set(CpuStatus::CARRY, dest.wrapping_shl(src.wrapping_sub(1) as u32) != 0);
                 self.PSW.set(CpuStatus::PARITY, parity(res as u8));
 
                 self.write_src_to_dest_16(Operand::MEMORY, res, extra);
@@ -329,14 +329,24 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
-                let b = self.resolve_src_8(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                };
                 let res = a & b;
 
                 self.update_flags_bitwise_8(res);
             }
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
-                let b = self.resolve_src_16(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                };
                 let res = a & b;
 
                 self.update_flags_bitwise_16(res);

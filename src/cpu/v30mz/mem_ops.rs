@@ -12,6 +12,10 @@ impl V30MZ {
                 let bits = self.current_op[0] & 0b111;
                 self.resolve_register_operand(bits, Mode::M16).try_into().unwrap()
             }
+
+            // Using this to represent PUSH PSW
+            // PUSH R implemented separately
+            Operand::NONE => self.PSW.bits(),
             _ => self.resolve_src_16(src, extra)
         };
         self.push(src);
@@ -54,6 +58,8 @@ impl V30MZ {
     }
 
     pub fn pop_r(&mut self) {
+        // println!("POP R");
+        // println!("SP before: {:04X}", self.SP);
         self.IY = self.pop();
         self.IX = self.pop();
         self.BP = self.pop();
@@ -62,6 +68,8 @@ impl V30MZ {
         self.DW = self.pop();
         self.CW = self.pop();
         self.AW = self.pop();
+        // println!("IY {:04X} IX {:04X} BP {:04X} SP {:04X}", self.IY, self.IX, self.BP, self.SP);
+        // println!("BW {:04X} DW {:04X} CW {:04X} AW {:04X}", self.BW, self.DW, self.CW, self.AW);
     }
 
     pub fn mov(&mut self, operation: &OpCode, extra: u8) {
@@ -169,7 +177,7 @@ impl V30MZ {
     pub fn trans(&mut self) {
         // Calculates a memory offset as the unsigned sum of BW and AL,
         // and loads the byte at that offset into AL.
-        let offset = self.BW.wrapping_add(self.AW & 0b0000_1111);
+        let offset = self.BW.wrapping_add(self.AW & 0x0F);
         let addr = self.get_physical_address(offset, self.DS0);
         self.AW = swap_l(self.AW, self.read_mem(addr));
     }
@@ -230,7 +238,7 @@ impl V30MZ {
                     }
                     _ => {
                         let src1 = self.AW;
-                        let bits = (self.current_op[0] & 0b0011_1000) >> 3;
+                        let bits = self.current_op[0] & 0b111;
                         let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
                         let src2 = *r;
                         *r = src1;
@@ -362,7 +370,7 @@ mod test {
         soc.set_wram(vec![
             0x88, 0xC1,             // CL <- AL
             0x88, 0x04,             // WRAM[IX] <- AL
-            0x88, 0x06, 0xFE, 0x00, // WRAM[0x00FE] <- AL
+            0x88, 0x26, 0xFE, 0x00, // WRAM[0x00FE] <- AH
         ]);
         soc.get_cpu().AW = 0x1234;
         soc.get_cpu().IX = 0xFF;
@@ -377,7 +385,7 @@ mod test {
 
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
-        assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x34);
+        assert_eq_hex!(soc.get_wram().borrow()[0x00FE], 0x12);
     }
 
     #[test]
@@ -587,10 +595,10 @@ mod test {
             0x9E, // PSW <- AH
         ]);
 
-        soc.get_cpu().AW = 0x55_00;
+        soc.get_cpu().AW = 0x5500;
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0001);
-        assert_eq_hex!(soc.get_cpu().PSW.bits() & 0xFF, 0x55);
+        assert_eq_hex!(soc.get_cpu().PSW.bits() & 0xFF, 0x57);
     }
 
     #[test]
@@ -671,15 +679,19 @@ mod test {
     }
 
     #[test]
-    fn test_0xb0_mov_imm_to_reg_8() {
+    fn test_mov_imm_to_reg_8() {
         let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0xB0, 0x12, // AL <- 0x12
+            0xB4, 0x34, // AH <- 0x34
         ]);
 
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0002);
         assert_eq_hex!(soc.get_cpu().AW, 0x0012);
+        soc.tick_cpu_no_cycles();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0004);
+        assert_eq_hex!(soc.get_cpu().AW, 0x3412);
     }
 
     #[test]

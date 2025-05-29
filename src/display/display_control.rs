@@ -179,16 +179,13 @@ impl Display {
             self.overlay_pixels(self.cycle, self.scanline - 1);
         }
 
-        if self.scanline == 143 {
+        if self.scanline == 143 && self.cycle == 225 {
             self.io_bus.borrow_mut().vblank();
-        }
-
-        if self.scanline == 144 {
-            self.io_bus.borrow_mut().set_lcd_line(self.scanline);
         }
 
         if self.scanline == 159 {
             self.scanline = 0;
+            self.io_bus.borrow_mut().set_lcd_line(self.scanline);
         }
 
         self.cycle += 1;

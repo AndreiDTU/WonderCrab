@@ -79,6 +79,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
         self.PSW.remove(CpuStatus::OVERFLOW);
         self.PSW.remove(CpuStatus::CARRY);
+        self.PSW.remove(CpuStatus::AUX_CARRY);
         self.PSW.set(CpuStatus::PARITY, parity(res));
 
     }
@@ -88,6 +89,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
         self.PSW.remove(CpuStatus::OVERFLOW);
         self.PSW.remove(CpuStatus::CARRY);
+        self.PSW.remove(CpuStatus::AUX_CARRY);
         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
 
     }
@@ -120,10 +122,13 @@ impl V30MZ {
                 self.expect_op_bytes(2);
                 let src = self.current_op[1];
 
-                let r_bits = (self.current_op[0] & 0b111) >> 3;
+                let r_bits = self.current_op[0] & 0b111;
                 let dest = self.resolve_register_operand(r_bits, mode);
                 match dest {
-                    RegisterType::RH(rh) => *rh = swap_h(*rh, src),
+                    RegisterType::RH(rh) => {
+                        println!("dest: {:04X} src: {:02X}", *rh, src);
+                        *rh = swap_h(*rh, src)
+                    },
                     RegisterType::RL(rl) => *rl = swap_l(*rl, src),
                     RegisterType::RW(_) => unreachable!(),
                 }

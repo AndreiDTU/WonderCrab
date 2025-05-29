@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
-use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA};
+use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA, keypad::Keypad};
 
 pub struct SoC {
     // COMPONENTS
@@ -12,7 +12,7 @@ pub struct SoC {
     mem_bus: Rc<RefCell<MemBus>>,
 
     // I/O
-    io_bus: Rc<RefCell<IOBus>>,
+    pub(super) io_bus: Rc<RefCell<IOBus>>,
 
     cycles: u32,
 }
@@ -39,8 +39,9 @@ impl IOBusConnection for SoC {
 
 impl SoC {
     pub fn new(color: bool, sram: Vec<u8>, rom: Vec<u8>, mapper: Mapper, rewrittable: bool) -> Self {
+        let keypad = Rc::new(RefCell::new(Keypad::new()));
         let cartridge = Rc::new(RefCell::new(Cartridge::new(mapper, sram, rom, rewrittable)));
-        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge))));
+        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), Rc::clone(&keypad))));
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
@@ -88,8 +89,9 @@ impl SoC {
     }
     
     pub fn test_build() -> Self {
+        let keypad = Rc::new(RefCell::new(Keypad::new()));
         let cartridge = Rc::new(RefCell::new(Cartridge::test_build()));
-        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge))));
+        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), Rc::clone(&keypad))));
         let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
