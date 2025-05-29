@@ -8,7 +8,6 @@ impl V30MZ {
         match op {
             Operand::IMMEDIATE => {
                 (self.PC, self.PS) = (self.expect_extra_word(), self.expect_extra_word());
-                self.pc_displacement = 0;
             },
             Operand::IMMEDIATE_S => {
                 match mode {
@@ -17,10 +16,9 @@ impl V30MZ {
                         self.branch(true);
                     },
                     Mode::M16 => {
-                        let displacement = self.expect_extra_word() as i16;
-                        self.PC = self.PC.wrapping_add(self.pc_displacement);
-                        self.pc_displacement = 0;
-                        self.PC = (self.PC as i16).wrapping_add(displacement) as u16;
+                        let displacement = self.expect_extra_word();
+                        self.PC = self.PC.wrapping_add(self.current_op.len() as u16);
+                        self.PC = self.PC.wrapping_add(displacement);
                     }
                     _ => unreachable!()
                 }
@@ -40,6 +38,7 @@ impl V30MZ {
             }
             _ => unreachable!()
         }
+        self.pc_displacement = 0;
         // println!("to address: {:05X}", self.get_pc_address());
     }
 
@@ -68,6 +67,7 @@ impl V30MZ {
             self.push(old_PS);
         }
         self.push(old_PC.wrapping_add(self.current_op.len() as u16));
+        // println!("CALL pushed: PC = {:04X}", old_PC.wrapping_add(self.current_op.len() as u16));
     }
 
     pub fn chkind(&mut self, extra: u8) {
@@ -99,6 +99,7 @@ impl V30MZ {
     }
 
     pub fn retn(&mut self, op: Operand) {
+        // println!("RETN before PC: {:04X} PS: {:04X}", self.PC, self.PS);
         self.PC = self.pop();
         let dest = match op {
             Operand::IMMEDIATE => self.expect_extra_word(),
@@ -106,6 +107,8 @@ impl V30MZ {
             _ => unreachable!(),
         };
         self.SP = self.SP.wrapping_add(dest);
+        self.pc_displacement = 0;
+        // println!("RETN after PC: {:04X} PS: {:04X}", self.PC, self.PS);
     }
 
     pub fn retf(&mut self, op: Operand) {
@@ -128,6 +131,7 @@ impl V30MZ {
         self.PC = self.pop();
         self.PS = self.pop();
         self.PSW = CpuStatus::from_bits_truncate(self.pop());
+        self.pc_displacement = 0;
         // println!("RETI address after: {:05X}", self.get_pc_address());
     }
 }

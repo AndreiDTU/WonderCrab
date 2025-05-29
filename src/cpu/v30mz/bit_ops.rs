@@ -7,7 +7,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
-                let b = self.resolve_src_8(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                };
                 let res = a & b;
 
                 self.update_flags_bitwise_8(res);
@@ -16,7 +20,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
-                let b = self.resolve_src_16(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                };
                 let res = a & b;
 
                 self.update_flags_bitwise_16(res);
@@ -45,7 +55,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
-                let b = self.resolve_src_8(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                };
                 let res = a | b;
 
                 self.update_flags_bitwise_8(res);
@@ -54,7 +68,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
-                let b = self.resolve_src_16(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                };
                 let res = a | b;
 
                 self.update_flags_bitwise_16(res);
@@ -329,7 +349,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
-                let b = self.resolve_src_8(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                };
                 let res = a ^ b;
 
                 self.update_flags_bitwise_8(res);
@@ -338,7 +362,13 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
-                let b = self.resolve_src_16(op2, extra);
+                let b = if op2 == Operand::IMMEDIATE_S {
+                    self.expect_extra_byte() as i8 as i16 as u16
+                } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_word()
+                } else {
+                    self.resolve_src_16(op2, extra)
+                };
                 let res = a ^ b;
 
                 self.update_flags_bitwise_16(res);

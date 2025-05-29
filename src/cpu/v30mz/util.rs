@@ -441,7 +441,7 @@ impl V30MZ {
     pub fn expect_op_bytes(&mut self, bytes: usize) {
         while self.current_op.len() < bytes {
             let addr = self.PC.wrapping_add(self.current_op.len() as u16);
-            let physical_address = self.get_physical_address(addr, self.PS);
+            let physical_address = self.apply_segment(addr, self.PS);
             let byte = self.read_mem(physical_address);
             self.current_op.push(byte);
             self.pc_displacement = self.current_op.len() as u16;

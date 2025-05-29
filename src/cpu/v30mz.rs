@@ -70,6 +70,7 @@ pub struct V30MZ {
     pub current_op: Vec<u8>,
     segment_override: Option<u16>,
     halt: bool, rep: bool, rep_z: bool,
+    no_interrupt: bool,
 
     // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
@@ -126,6 +127,7 @@ impl V30MZ {
             current_op: Vec::with_capacity(8),
             segment_override: None,
             halt: false, rep: false, rep_z: false,
+            no_interrupt: false,
 
             mem_bus, io_bus,
             mem_buffer: HashMap::new(),
@@ -138,7 +140,7 @@ impl V30MZ {
     pub fn tick(&mut self) {
         // println!("Tick: halt={}, cycles={}", self.halt, self.cycles);
         if self.cycles == 0 {
-            if !self.rep {if self.poll_interrupts() {return}};
+            if !self.rep && !self.no_interrupt {if self.poll_interrupts() {return}};
             if !self.halt {self.execute()};
         } else {
             self.cycles -= 1;
@@ -154,6 +156,7 @@ impl V30MZ {
 
         // if true {println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name)};
 
+        // If it's not a block operation disable the REP prefix
         if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
             self.rep = false;
         }
@@ -165,7 +168,7 @@ impl V30MZ {
             println!()
         }*/
 
-        // if self.get_pc_address() == 0xF9886 {assert_eq_hex!(self.DW, 0x5101);}
+        // if self.get_pc_address() == 0xF993B {assert!(self.PSW.contains(CpuStatus::CARRY))}
 
         self.base = op.cycles;
         self.cycles = self.base;
@@ -396,7 +399,7 @@ impl V30MZ {
                     5 => self.shr(op.code, op.mode, op.extra),
                     6 => {
                         match op.mode {
-                            Mode::M8 => self.AW &= 0xFFEE,
+                            Mode::M8 => self.AW &= 0xFF00,
                             Mode::M16 => self.AW = 0,
                             _ => unreachable!(),
                         }
@@ -454,7 +457,7 @@ impl V30MZ {
             // HALT
             0xF4 => {
                 self.halt = true;
-                panic!("Halted at {:05X}", self.get_pc_address());
+                // panic!("Halted at {:05X}", self.get_pc_address());
             }
 
             // NOT1
@@ -539,7 +542,7 @@ impl V30MZ {
             code => println!("Not yet implemented! Code: {:02X}", code),
         };
 
-        if self.PSW.contains(CpuStatus::INTERRUPT) {println!("Interrupt enabled!")}
+        if self.PSW.contains(CpuStatus::BREAK) {println!("BREAK set!")}
 
         self.finish_op();
     }
@@ -572,8 +575,10 @@ impl V30MZ {
         }
 
         if !self.rep || self.CW == 0 {
+            self.rep = false;
             self.PC = self.PC.wrapping_add(self.pc_displacement);
             self.mem_bus.borrow_mut().owner = Owner::NONE;
+            self.segment_override = None;
             if self.PSW.contains(CpuStatus::BREAK) {self.raise_exception(1)}
         }
 
@@ -583,19 +588,23 @@ impl V30MZ {
         if self.cycles == 0 {
             self.commit_writes();
         }
+
+        self.no_interrupt = false;
     }
 
     fn finish_prefix(&mut self) {
+        self.PC = self.PC.wrapping_add(1);
         self.current_op.clear();
-        self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
         self.cycles -= 1;
         if self.cycles == 0 {
             self.commit_writes();
         }
+        self.no_interrupt = true;
     }
 
     fn raise_exception(&mut self, vector: u8) {
+        // println!("Exception raised: vector={:02X}. Pushing PSW={:016b} PS={:04X}, PC={:04X}", vector, self.PSW.bits(), self.PS, self.PC);
         self.PC = self.PC.wrapping_add(self.pc_displacement);
         self.pc_displacement = 0;
 
@@ -605,8 +614,10 @@ impl V30MZ {
         self.push(self.PS);
         self.push(self.PC);
 
-        (self.PS, self.PC) = self.read_mem_32(vector as u32);
-        println!("Exception raised: vector={:02X}, PS={:04X}, PC={:04X}", vector, self.PS, self.PC);
+        let vec_addr = (vector as u32) * 4;
+
+        (self.PC, self.PS) = self.read_mem_32(vec_addr);
+        // println!("New values: PSW={:016b} PS={:04X}, PC={:04X}", self.PSW.bits(), self.PS, self.PC);
     }
 
     fn poll_interrupts(&mut self) -> bool {
@@ -619,7 +630,7 @@ impl V30MZ {
             if self.PSW.contains(CpuStatus::INTERRUPT) || nmi {
                 let source = cause.trailing_zeros() as u8;
                 let vector = self.read_io(0xB0).wrapping_add(source);
-                println!("Interrupt triggered: vector={:02X}", vector);
+                // println!("Interrupt triggered: vector={:02X}", vector);
                 self.raise_exception(vector);
                 return true;
             }

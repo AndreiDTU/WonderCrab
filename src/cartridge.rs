@@ -38,6 +38,10 @@ impl Cartridge {
     }
 
     pub fn read_sram(&self, addr: u32) -> u8 {
+        if self.sram.len() == 0 {
+            return IOBus::open_bus();
+        }
+        
         let hi = match self.mapper {
             Mapper::B_2001 => self.RAM_BANK_L as u32,
             Mapper::B_2003 => u16::from_le_bytes([self.RAM_BANK_L, self.RAM_BANK_H]) as u32,
@@ -62,6 +66,8 @@ impl Cartridge {
             let lo = addr & 0xFFFF;
 
             let offset = ((hi << 16) | lo) % self.sram.len() as u32;
+
+        // print!("CART SRAM_OFFSET: {:07X}", offset);
             
             if !(offset as usize > self.sram.len()) {
                 self.sram[offset as usize] = byte;
@@ -78,6 +84,8 @@ impl Cartridge {
 
         let offset = ((hi << 16) | lo) % self.rom.len() as u32;
 
+        // print!("CART ROM0_OFFSET: {:07X}", offset);
+
         self.rom[offset as usize]
     }
 
@@ -90,6 +98,8 @@ impl Cartridge {
 
         let offset = ((hi << 16) | lo) % self.rom.len() as u32;
 
+        // print!("CART ROM1_OFFSET: {:07X}", offset);
+
         self.rom[offset as usize]
     }
 
@@ -97,6 +107,8 @@ impl Cartridge {
         let addr = addr & 0xFFFFF;
         let hi = (self.LINEAR_ADDR_OFF as u32) << 20;
         let offset = (hi | addr) % self.rom.len() as u32;
+
+        // print!("CART EX_OFFSET: {:07X}", offset);
 
         self.rom[offset as usize]
     }

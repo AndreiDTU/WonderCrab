@@ -3,3 +3,5 @@ lcov.info
 *.ws
 *.wsc
 *.log
+*.ieeprom
+*.eeprom

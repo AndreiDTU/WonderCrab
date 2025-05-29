@@ -352,8 +352,8 @@ impl Display {
 
             let (y1, x1) = (y.wrapping_add(scroll_1_y), x.wrapping_add(scroll_1_x));
 
-            let palette = self.screen_1_elements[y1 / 8][x1 / 8].palette;
-            let raw_px = self.screen_1_tiles[y1 / 8][x1 / 8][y1 % 8][x1 % 8];
+            let palette = self.screen_1_elements[y1 / 32][x1 / 32].palette;
+            let raw_px = self.screen_1_tiles[y1 / 32][x1 / 32][y1 % 8][x1 % 8];
 
             self.screen_1_pixels[y][x] = self.fetch_pixel_color(palette, raw_px);
             // if true || (self.screen_1_pixels[y][x] != None && self.screen_1_pixels[y][x] != Some((0, 0, 0))) {println!("screen_1_pixels[{y}][{x}] set to {:?}", self.screen_1_pixels[y][x]);}

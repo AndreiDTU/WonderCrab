@@ -8,7 +8,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra) as u16;
-                let src = self.resolve_src_8(op2, extra) as u16;
+                let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                } as u16;
 
                 let result = old_dest.wrapping_add(src);
 
@@ -42,7 +46,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra) as u16;
-                let src = self.resolve_src_8(op2, extra) as u16;
+                let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                } as u16;
 
                 let carry = self.PSW.contains(CpuStatus::CARRY) as u16;
 
@@ -161,7 +169,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra);
-                let src = self.resolve_src_8(op2, extra);
+                let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                };
 
                 let result = old_dest.wrapping_sub(src);
 
@@ -208,8 +220,8 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::OVERFLOW, src == 0xFF);
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_sub(1);
-                        self.PSW.set(CpuStatus::ZERO, src == 0);
-                        self.PSW.set(CpuStatus::SIGN, src & 0x80 == 1);
+                        self.PSW.set(CpuStatus::ZERO, res == 0);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x80 == 1);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_8(Operand::MEMORY, res, extra);
                     }
@@ -219,8 +231,8 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::OVERFLOW, src == 0xFFFF);
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_sub(1);
-                        self.PSW.set(CpuStatus::ZERO, src == 0);
-                        self.PSW.set(CpuStatus::SIGN, src & 0x8000 == 1);
+                        self.PSW.set(CpuStatus::ZERO, res == 0);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x8000 == 1);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_16(Operand::MEMORY, res, extra);
                     }
@@ -326,8 +338,8 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::OVERFLOW, src == 0x7F);
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_add(1);
-                        self.PSW.set(CpuStatus::ZERO, src == 0);
-                        self.PSW.set(CpuStatus::SIGN, src & 0x80 == 1);
+                        self.PSW.set(CpuStatus::ZERO, res == 0);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x80 == 1);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_8(Operand::MEMORY, res, extra);
                     }
@@ -337,8 +349,8 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::OVERFLOW, src == 0x7FFF);
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_add(1);
-                        self.PSW.set(CpuStatus::ZERO, src == 0);
-                        self.PSW.set(CpuStatus::SIGN, src & 0x8000 == 1);
+                        self.PSW.set(CpuStatus::ZERO, res == 0);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x8000 == 1);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_16(Operand::MEMORY, res, extra);
                     }
@@ -495,7 +507,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra);
-                let src = self.resolve_src_8(op2, extra);
+                let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                };
 
                 let result = old_dest.wrapping_sub(src);
 
@@ -520,7 +536,11 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra);
-                let src = self.resolve_src_8(op2, extra);
+                let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    self.expect_extra_byte()
+                } else {
+                    self.resolve_src_8(op2, extra)
+                };
 
                 let carry = self.PSW.contains(CpuStatus::CARRY) as u8;
 
