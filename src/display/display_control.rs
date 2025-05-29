@@ -341,7 +341,10 @@ impl Display {
         let s2wc  = (lcd_ctrl >> 5) & 1 != 0;
 
         let bg_color = if self.io_bus.borrow_mut().color_mode() {
-            self.get_color_palette((lcd_ctrl >> 12) as u8)[((lcd_ctrl >> 8) & 0x0F) as usize]
+            let mut color = (lcd_ctrl >> 8) & 0x0F;
+            if self.format == PaletteFormat::PLANAR_2BPP {color &= 0x3}
+            let (r, g, b) = self.get_color_palette((lcd_ctrl >> 12) as u8)[color as usize];
+            (r * 17, g * 17, b * 17)
         } else {
             let index = ((lcd_ctrl >> 8) & 0x7) as u8;
             let (port, shift) = (index / 2, index % 2);
@@ -407,7 +410,8 @@ impl Display {
                 }
 
                 Some(if self.io_bus.borrow_mut().color_mode() {
-                    self.get_color_palette(palette)[raw_px as usize]
+                    let (r, g, b) = self.get_color_palette(palette)[raw_px as usize];
+                    (r * 17, g * 17, b * 17)
                 } else {
                     self.get_monochrome_palette(palette)[raw_px as usize]
                 })
@@ -416,8 +420,9 @@ impl Display {
                 if raw_px == 0 {
                     return None;
                 }
+                let (r, g, b) = self.get_color_palette(palette)[raw_px as usize];
 
-                Some(self.get_color_palette(palette)[raw_px as usize])
+                Some((r * 17, g * 17, b * 17))
             },
         }
     }
