@@ -86,12 +86,10 @@ impl V30MZ {
         let mut AL = self.AW as u8;
         if AL & 0x0F > 0x09 || self.PSW.contains(CpuStatus::AUX_CARRY) {
             AL = AL.wrapping_add(0x06);
-            self.AW = swap_l(self.AW, AL);
             self.PSW.insert(CpuStatus::AUX_CARRY);
         }
         if AL > 0x9F || self.PSW.contains(CpuStatus::CARRY) {
             AL = AL.wrapping_add(0x60);
-            self.AW = swap_l(self.AW, AL);
             self.PSW.insert(CpuStatus::CARRY);
         }
 
@@ -105,12 +103,10 @@ impl V30MZ {
         let mut AL = self.AW as u8;
         if AL & 0x0F > 0x09 || self.PSW.contains(CpuStatus::AUX_CARRY) {
             AL = AL.wrapping_sub(0x06);
-            self.AW = swap_l(self.AW, AL);
             self.PSW.insert(CpuStatus::AUX_CARRY);
         }
         if AL > 0x9F || self.PSW.contains(CpuStatus::CARRY) {
             AL = AL.wrapping_sub(0x60);
-            self.AW = swap_l(self.AW, AL);
             self.PSW.insert(CpuStatus::CARRY);
         }
 
@@ -205,7 +201,7 @@ impl V30MZ {
                 let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
                 let (o, a) = (*r == 0xFFFF, *r & 0xF == 0);
                 *r = r.wrapping_sub(1);
-                let (z, s, p) = (*r == 0, *r & 0x8000 == 1, parity(*r as u8));
+                let (z, s, p) = (*r == 0, *r & 0x8000 != 0, parity(*r as u8));
                 self.PSW.set(CpuStatus::OVERFLOW, o);
                 self.PSW.set(CpuStatus::AUX_CARRY, a);
                 self.PSW.set(CpuStatus::ZERO, z);
@@ -221,7 +217,7 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_sub(1);
                         self.PSW.set(CpuStatus::ZERO, res == 0);
-                        self.PSW.set(CpuStatus::SIGN, res & 0x80 == 1);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_8(Operand::MEMORY, res, extra);
                     }
@@ -232,7 +228,7 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_sub(1);
                         self.PSW.set(CpuStatus::ZERO, res == 0);
-                        self.PSW.set(CpuStatus::SIGN, res & 0x8000 == 1);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_16(Operand::MEMORY, res, extra);
                     }
@@ -248,14 +244,34 @@ impl V30MZ {
             Mode::M8 => {
                 self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_8(self.current_op[1], extra) as i8 as i16;
-                if divisor == 0 {return self.raise_exception(0)}
+                if divisor == 0 && self.AW != 0x8000 {
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
 
                 let dividend = self.AW as i16;
 
-                let quotient = dividend / divisor;
-                if quotient > 0x7F || quotient < -0x7F {return self.raise_exception(0)}
+                let (quotient, remainder) = if self.AW == 0x8000 && divisor == 0 {
+                    (0x81, 0x00)
+                } else {
+                    (dividend / divisor, dividend.wrapping_rem(divisor) as i8)
+                };
 
-                let remainder = dividend.wrapping_rem(divisor) as i8;
+                if quotient > 0x7F || quotient < -0x7F {
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
+
+                self.PSW.remove(CpuStatus::AUX_CARRY);
+                self.PSW.remove(CpuStatus::CARRY);
+                self.PSW.remove(CpuStatus::OVERFLOW);
+                self.PSW.set(CpuStatus::ZERO, quotient == 0);
+                self.PSW.set(CpuStatus::PARITY, parity(quotient as i8 as u8));
+                self.PSW.set(CpuStatus::SIGN, quotient < 0);
 
                 self.AW = swap_h(self.AW, remainder as i8 as u8);
                 self.AW = swap_l(self.AW, quotient as i8 as u8);
@@ -263,14 +279,38 @@ impl V30MZ {
             Mode::M16 => {
                 self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_16(self.current_op[1], extra) as i16 as i32;
-                if divisor == 0 {return self.raise_exception(0)}
+                if divisor == 0 {
+                    self.PSW.remove(CpuStatus::CARRY);
+                    self.PSW.remove(CpuStatus::OVERFLOW);
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
 
                 let dividend = ((self.DW as u32) << 16 | self.AW as u32) as i32;
 
-                let quotient = dividend / divisor;
-                if quotient > 0x7FFF || quotient < -0x7FFF {return self.raise_exception(0)}
+                let (quotient, remainder) = if self.DW == 0x8000 && divisor == 0 {
+                    (0x8081, 0x00)
+                } else {
+                    (dividend / divisor, dividend.wrapping_rem(divisor))
+                };
 
-                let remainder = dividend.wrapping_rem(divisor);
+                if quotient > 0x7FFF || quotient < -0x7FFF {
+                    self.PSW.remove(CpuStatus::CARRY);
+                    self.PSW.remove(CpuStatus::OVERFLOW);
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
+
+                self.PSW.remove(CpuStatus::AUX_CARRY);
+                self.PSW.remove(CpuStatus::CARRY);
+                self.PSW.remove(CpuStatus::OVERFLOW);
+                self.PSW.set(CpuStatus::ZERO, quotient == 0);
+                self.PSW.set(CpuStatus::PARITY, parity(quotient as i8 as u8));
+                self.PSW.set(CpuStatus::SIGN, quotient < 0);
 
                 self.DW = remainder as i16 as u16;
                 self.AW = quotient as i16 as u16;
@@ -284,25 +324,63 @@ impl V30MZ {
             Mode::M8 => {
                 self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_8(self.current_op[1], extra) as u16;
-                if divisor == 0 {return self.raise_exception(0)}
+                if divisor == 0 {
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
 
-                let quotient = self.AW / divisor;
-                if quotient > 0xFF {return self.raise_exception(0)}
+                let dividend = self.AW;
 
-                let remainder = self.AW.wrapping_rem(divisor);
+                let quotient = dividend / divisor;
+                if quotient > 0xFF {
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
 
-                self.AW = swap_h(self.AW, remainder as u8);
+                let remainder = dividend.wrapping_rem(divisor) as u8;
+
+                self.PSW.remove(CpuStatus::AUX_CARRY);
+                self.PSW.remove(CpuStatus::SIGN);
+                self.PSW.remove(CpuStatus::PARITY);
+                self.PSW.set(CpuStatus::ZERO, remainder == 0 && (quotient & 1 != 0));
+
+                self.AW = swap_h(self.AW, remainder);
                 self.AW = swap_l(self.AW, quotient as u8);
             }
             Mode::M16 => {
                 self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_16(self.current_op[1], extra) as u32;
-                if divisor == 0 {return self.raise_exception(0)}
+                if divisor == 0 {
+                    self.PSW.remove(CpuStatus::CARRY);
+                    self.PSW.remove(CpuStatus::OVERFLOW);
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
 
                 let quotient = self.AW as u32 / divisor;
-                if quotient > 0xFF {return self.raise_exception(0)}
+                if quotient > 0xFFFF {
+                    self.PSW.remove(CpuStatus::CARRY);
+                    self.PSW.remove(CpuStatus::OVERFLOW);
+                    self.PSW.remove(CpuStatus::AUX_CARRY);
+                    self.PSW.remove(CpuStatus::SIGN);
+                    self.PSW.remove(CpuStatus::PARITY);
+                    return self.raise_exception(0)
+                }
 
                 let remainder = (self.AW as u32).wrapping_rem(divisor);
+
+                self.PSW.remove(CpuStatus::CARRY);
+                self.PSW.remove(CpuStatus::OVERFLOW);
+                self.PSW.remove(CpuStatus::AUX_CARRY);
+                self.PSW.remove(CpuStatus::SIGN);
+                self.PSW.remove(CpuStatus::PARITY);
+                self.PSW.set(CpuStatus::ZERO, remainder == 0 && (quotient & 1 != 0));
 
                 self.DW = remainder as u16;
                 self.AW = quotient as u16;
@@ -323,7 +401,7 @@ impl V30MZ {
                 let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
                 let (o, a) = (*r == 0x7FFF, *r & 0xF == 0);
                 *r = r.wrapping_add(1);
-                let (z, s, p) = (*r == 0, *r & 0x8000 == 1, parity(*r as u8));
+                let (z, s, p) = (*r == 0, *r & 0x8000 != 0, parity(*r as u8));
                 self.PSW.set(CpuStatus::OVERFLOW, o);
                 self.PSW.set(CpuStatus::AUX_CARRY, a);
                 self.PSW.set(CpuStatus::ZERO, z);
@@ -339,7 +417,7 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_add(1);
                         self.PSW.set(CpuStatus::ZERO, res == 0);
-                        self.PSW.set(CpuStatus::SIGN, res & 0x80 == 1);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_8(Operand::MEMORY, res, extra);
                     }
@@ -350,7 +428,7 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF == 0);
                         let res = src.wrapping_add(1);
                         self.PSW.set(CpuStatus::ZERO, res == 0);
-                        self.PSW.set(CpuStatus::SIGN, res & 0x8000 == 1);
+                        self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
                         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
                         self.write_src_to_dest_16(Operand::MEMORY, res, extra);
                     }
@@ -422,8 +500,8 @@ impl V30MZ {
                 let result = self.AW as u8 as u16 * factor;
                 self.AW = result;
                 
-                self.PSW.set(CpuStatus::OVERFLOW, self.AW >> 8 != 0);
-                self.PSW.set(CpuStatus::CARRY, self.AW >> 8 != 0);
+                self.PSW.set(CpuStatus::OVERFLOW, result >> 8 != 0);
+                self.PSW.set(CpuStatus::CARRY, result >> 8 != 0);
             }
             Mode::M16 => {
                 self.expect_op_bytes(2);

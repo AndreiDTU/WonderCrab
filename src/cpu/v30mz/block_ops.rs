@@ -24,7 +24,10 @@ impl V30MZ {
         self.IX = self.update_block_index(mode, self.IX);
         self.IY = self.update_block_index(mode, self.IY);
 
-        self.rep = self.PSW.contains(CpuStatus::ZERO) == self.rep_z;
+        if self.rep {
+            self.CW -= 1;
+            self.rep = self.PSW.contains(CpuStatus::ZERO) == self.rep_z;
+        }
 
         self.base = if self.rep {
             if self.rep_z {
@@ -56,7 +59,10 @@ impl V30MZ {
         }
         self.IY = self.update_block_index(mode, self.IY);
 
-        self.rep = self.PSW.contains(CpuStatus::ZERO) == self.rep_z;
+        if self.rep {
+            self.CW -= 1;
+            self.rep = self.PSW.contains(CpuStatus::ZERO) == self.rep_z;
+        }
 
         self.base = if self.rep {rep_cycles} else {cycles};
         self.cycles = self.base;
@@ -78,7 +84,10 @@ impl V30MZ {
         }
         self.IY = self.update_block_index(mode, self.IY);
 
-        self.base = if self.rep {rep_cycles} else {cycles};
+        self.base = if self.rep {
+            self.CW -= 1;
+            rep_cycles
+        } else {cycles};
         self.cycles = self.base;
     }
 
@@ -94,7 +103,10 @@ impl V30MZ {
         }
         self.IX = self.update_block_index(mode, self.IX);
 
-        self.base = if self.rep {rep_cycles} else {cycles};
+        self.base = if self.rep {
+            self.CW -= 1;
+            rep_cycles
+        } else {cycles};
         self.cycles = self.base;
     }
 
@@ -115,7 +127,10 @@ impl V30MZ {
         self.IX = self.update_block_index(mode, self.IX);
         self.IY = self.update_block_index(mode, self.IY);
 
-        self.base = if self.rep {rep_cycles} else {cycles};
+        self.base = if self.rep {
+            self.CW -= 1;
+            rep_cycles
+        } else {cycles};
         self.cycles = self.base;
     }
 
@@ -134,7 +149,10 @@ impl V30MZ {
         }
         self.IX = self.update_block_index(mode, self.IX);
 
-        self.base = if self.rep {rep_cycles} else {cycles};
+        self.base = if self.rep {
+            self.CW -= 1;
+            rep_cycles
+        } else {cycles};
         self.cycles = self.base;
     }
 
@@ -147,7 +165,10 @@ impl V30MZ {
         }
         self.IY = self.update_block_index(mode, self.IY);
 
-        self.base = if self.rep {rep_cycles} else {cycles};
+        self.base = if self.rep {
+            self.CW -= 1;
+            rep_cycles
+        } else {cycles};
         self.cycles = self.base;
     }
 

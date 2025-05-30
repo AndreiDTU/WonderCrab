@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA, keypad::Keypad};
 
@@ -38,12 +38,12 @@ impl IOBusConnection for SoC {
 }
 
 impl SoC {
-    pub fn new(color: bool, sram: Vec<u8>, rom: Vec<u8>, mapper: Mapper, rewrittable: bool) -> Self {
+    pub fn new(color: bool, sram: Vec<u8>, rom: Vec<u8>, mapper: Mapper, rewrittable: bool, trace: bool) -> Self {
         let keypad = Rc::new(RefCell::new(Keypad::new()));
         let cartridge = Rc::new(RefCell::new(Cartridge::new(mapper, sram, rom, rewrittable)));
         let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), Rc::clone(&keypad))));
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
-        let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), trace);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus)));
 
@@ -93,7 +93,7 @@ impl SoC {
         let cartridge = Rc::new(RefCell::new(Cartridge::test_build()));
         let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), Rc::clone(&keypad))));
         let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus), Rc::clone(&cartridge))));
-        let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), false);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 

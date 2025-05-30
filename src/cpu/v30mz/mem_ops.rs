@@ -18,6 +18,7 @@ impl V30MZ {
             Operand::NONE => self.PSW.bits(),
             _ => self.resolve_src_16(src, extra)
         };
+        if src == self.SP {println!("Pushing src = {:04X}", src)};
         self.push(src);
     }
 
@@ -177,7 +178,7 @@ impl V30MZ {
     pub fn trans(&mut self) {
         // Calculates a memory offset as the unsigned sum of BW and AL,
         // and loads the byte at that offset into AL.
-        let offset = self.BW.wrapping_add(self.AW & 0x0F);
+        let offset = self.BW.wrapping_add(self.AW & 0xFF);
         let addr = self.get_physical_address(offset, self.DS0);
         self.AW = swap_l(self.AW, self.read_mem(addr));
     }
@@ -447,6 +448,7 @@ mod test {
             0x8B, 0xC1,             // AW <- CW
             0x8B, 0x04,             // AW <- WRAM[IX] = 0xFFFF
             0x8B, 0x06, 0xFE, 0x00, // AW <- WRAM[0x00FE] = 0xFF12
+            0x8B, 0xD0              // DW <- AW
         ]);
         soc.get_cpu().CW = 0x1234;
         soc.get_cpu().IX = 0xFF;
@@ -465,6 +467,12 @@ mod test {
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().PC, 0x0008);
         assert_eq_hex!(soc.get_cpu().AW, 0xFF12);
+
+        soc.get_cpu().AW = 0x5101;
+
+        soc.tick_cpu_no_cycles();
+        assert_eq_hex!(soc.get_cpu().PC, 0x000A);
+        assert_eq_hex!(soc.get_cpu().DW, 0x5101);
     }
 
     #[test]

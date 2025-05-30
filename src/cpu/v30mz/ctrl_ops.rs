@@ -94,6 +94,7 @@ impl V30MZ {
                 let word = self.read_mem_16(addr);
                 self.push(word);
             }
+            self.push(temp);
         }
         self.BP = temp;
         self.SP = self.SP.wrapping_sub(imm16);

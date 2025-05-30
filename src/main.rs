@@ -24,10 +24,11 @@ pub mod cpu;
 fn main() -> Result<(), String> {
     let args: Vec<_> = env::args().collect();
     let game = if args.len() > 1 {Some(&args[1])} else {None};
+    let trace = args.get(2) == Some(&"trace".to_string());
 
     let mut soc = if let Some(game) = game {
         let (color, sram, rom, mapper, rewrittable) = parse_rom(game);
-        SoC::new(color, sram, rom, mapper, rewrittable)
+        SoC::new(color, sram, rom, mapper, rewrittable, trace)
     } else {SoC::test_build()};
 
     let sdl_context = sdl2::init()?;
@@ -54,6 +55,8 @@ fn main() -> Result<(), String> {
     key_map.insert(Keycode::Return, Keys::Start);
     key_map.insert(Keycode::Z, Keys::B);
     key_map.insert(Keycode::X, Keys::A);
+
+    // let mut frames = 0;
 
     loop {
         if soc.tick() {
@@ -88,6 +91,8 @@ fn main() -> Result<(), String> {
                     _ => {}
                 }
             }
+
+            // frames += 1; if frames == 2 {std::process::exit(0);}
         }
     }
 }

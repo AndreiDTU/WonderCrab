@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{cartridge::Cartridge, display::{display_control, PaletteFormat}, keypad::Keypad};
+use crate::{cartridge::Cartridge, display::PaletteFormat, keypad::Keypad};
 
 pub struct IOBus {
     ports: [u8; 0x100],
@@ -210,6 +210,7 @@ impl IOBus {
 
     pub fn color_setup(&mut self) {
         self.ports[0x60] = 0x80;
+        self.ports[0xA0] = 0x02;
     }
 
     pub fn open_bus() -> u8 {

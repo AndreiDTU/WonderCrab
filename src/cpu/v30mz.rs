@@ -84,6 +84,8 @@ pub struct V30MZ {
     // TIMING
     cycles: u8,
     base: u8,
+
+    trace: bool,
 }
 
 impl MemBusConnection for V30MZ {
@@ -115,7 +117,7 @@ impl IOBusConnection for V30MZ {
 }
 
 impl V30MZ {
-    pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
+    pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>, trace: bool) -> Self {
         Self {
             AW: 0, BW: 0, CW: 0, DW: 0,
             DS0: 0, DS1: 0, PS: 0, SS: 0,
@@ -135,6 +137,7 @@ impl V30MZ {
             io_buffer: HashMap::new(),
 
             cycles: 0, base: 0,
+            trace,
         }
     }
 
@@ -144,7 +147,7 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::FIXED_OFF_1);
         self.PSW.remove(CpuStatus::FIXED_OFF_2);
         if self.cycles == 0 {
-            if !self.rep && !self.no_interrupt {if self.poll_interrupts() {return}};
+            if !self.rep && !self.no_interrupt {if self.poll_interrupts() {}};
             if !self.halt {self.execute()};
         } else {
             self.cycles -= 1;
@@ -160,7 +163,13 @@ impl V30MZ {
 
         // let old_SP = self.SP;
 
-        // if true {println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name)};
+        if self.trace {
+            println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
+            println!("IY {:04X} IX {:04X} BP {:04X} SP {:04X}", self.IY, self.IX, self.BP, self.SP);
+            println!("BW {:04X} DW {:04X} CW {:04X} AW {:04X}", self.BW, self.DW, self.CW, self.AW);
+            println!("PC {:04X} PS {:04X} PSW: {:04X}", self.PC, self.PS, self.PSW.bits());
+            println!();
+        }
 
         // If it's not a block operation disable the REP prefix
         if !((op.code >= 0xA4 && op.code <= 0xA7) || (op.code >= 0x6C && op.code <= 0x6F) || (op.code >= 0xAA && op.code <= 0xAF)) {
@@ -178,6 +187,8 @@ impl V30MZ {
 
         self.base = op.cycles;
         self.cycles = self.base;
+
+        let old_IE = self.PSW.contains(CpuStatus::INTERRUPT);
 
         // This will return OK only if there are no pending requests to SoC
         match op.code {
@@ -236,6 +247,10 @@ impl V30MZ {
             0x00..=0x05 => self.add(op.op1, op.op2, op.mode, op.extra),
 
             // PUSH
+            0x54 => {
+                self.SP = self.SP.wrapping_sub(2);
+                self.write_mem_16(self.get_stack_address(), self.SP);
+            }
             0x06 | 0x0E | 0x16 | 0x1E | 0x50..=0x57 | 0x68 | 0x6A | 0x9C => self.push_op(op.op2, op.extra),
             0x60 => self.push_r(),
             // POP
@@ -356,6 +371,9 @@ impl V30MZ {
                 let mut psw = self.PSW.bits();
                 psw = swap_l(psw, AH);
                 self.PSW = CpuStatus::from_bits_truncate(psw);
+                self.PSW = self.PSW.union(CpuStatus::from_bits_truncate(0xF002));
+                self.PSW.remove(CpuStatus::FIXED_OFF_1);
+                self.PSW.remove(CpuStatus::FIXED_OFF_2);
             }
             0x9F => {
                 self.AW = swap_h(self.AW, self.PSW.bits() as u8);
@@ -552,7 +570,7 @@ impl V30MZ {
 
         // if self.SP != old_SP {println!("SP changed {:04X} -> {:04X}", old_SP, self.SP);}
 
-        self.finish_op();
+        self.finish_op(old_IE);
     }
 
     pub fn reset(&mut self) {
@@ -562,8 +580,8 @@ impl V30MZ {
         self.DW = 0x0005;
         self.DS0 = 0xFE00;
         self.DS1 = 0x0000;
-        self.IX = 0x023D;
-        self.IY = 0x040D;
+        self.IX = 0x0435;
+        self.IY = 0x040B;
         self.PS = 0xFFFF;
         self.PC = 0x0000;
         self.BP = 0x0000;
@@ -576,14 +594,10 @@ impl V30MZ {
         self.apply_segment(self.PC, self.PS)
     }
 
-    fn finish_op(&mut self) {
-        self.no_interrupt = false;
+    fn finish_op(&mut self, old_IE: bool) {
+        self.no_interrupt = (self.PSW.contains(CpuStatus::INTERRUPT) != old_IE) && !old_IE;
 
         self.PSW = CpuStatus::from_bits_truncate(self.PSW.bits() | 0xF002);
-        if self.rep {
-            self.CW = self.CW.wrapping_sub(1);
-            // println!("CW: {}", self.CW);
-        }
 
         if !self.rep || self.CW == 0 {
             self.mem_bus.borrow_mut().owner = Owner::NONE;
@@ -640,7 +654,7 @@ impl V30MZ {
             self.halt = false;
             if self.PSW.contains(CpuStatus::INTERRUPT) || nmi {
                 let source = cause.trailing_zeros() as u8;
-                if source == 0x01 {println!("KEY interrupt")}
+                // if source == 0x01 {println!("KEY interrupt")}
                 let vector = self.read_io(0xB0).wrapping_add(source);
                 // println!("Interrupt triggered: vector={:02X}", vector);
                 self.raise_exception(vector);

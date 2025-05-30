@@ -1,5 +1,3 @@
-use std::cmp::min;
-
 use crate::cpu::parity;
 
 use super::*;
@@ -8,11 +6,11 @@ impl V30MZ {
     pub fn branch(&mut self, cond: bool) {
         // println!();
         // println!("Branch address before: {:05X}", self.get_pc_address());
-        let displacement = self.expect_extra_byte() as i8 as i16;
+        let displacement = self.expect_extra_byte() as i8 as i16 as u16;
         if cond {
             self.PC = self.PC.wrapping_add(self.pc_displacement);
             self.pc_displacement = 0;
-            self.PC = (self.PC as i16).wrapping_add(displacement) as u16;
+            self.PC = self.PC.wrapping_add(displacement);
         }
         // println!("Branch address after: {:05X}", self.get_pc_address());
         // println!()
@@ -97,17 +95,19 @@ impl V30MZ {
     pub fn get_rot_src(&mut self, code: u8) -> u8 {
         // The src is always one byte
         return match code & 0xFE {
-            0xC0 => self.expect_extra_byte(),
+            0xC0 => self.expect_extra_byte() & 0x1F,
             0xD0 => 1,
-            0xD2 => self.CW as u8,
+            0xD2 => self.CW as u8 & 0x1F,
             _ => unreachable!(),
         } & 0x1F
     }
 
     pub fn push(&mut self, src: u16) {
+        let old_SP = self.SP;
         self.SP = self.SP.wrapping_sub(2);
         let addr = self.get_stack_address();
         self.write_mem_16(addr, src);
+        if src == old_SP {println!("new SP = {:04X}", self.SP)}
     }
 
     pub fn pop(&mut self) -> u16 {
