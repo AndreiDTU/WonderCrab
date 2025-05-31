@@ -65,6 +65,7 @@ impl MemBusConnection for MemBus {
     }
 
     fn write_mem(&mut self, addr: u32, byte: u8) {
+        // if (0x2050..=0x2060).contains(&addr) {println!("[{:04X}] <- {:02X}", addr, byte)}
         match addr {
             0x00000..=0x03FFF => {
                 self.wram[addr as usize] = byte;

@@ -197,7 +197,7 @@ impl V30MZ {
         // or two bytes to be loaded into AL and AH respectively
         match mode {
             Mode::M8 => {
-                let AL = self.read_io(addr);
+                let AL = self.read_io(addr as u8 as u16);
 
                 self.AW = swap_l(self.AW, AL);
             }

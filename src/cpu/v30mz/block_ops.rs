@@ -11,13 +11,13 @@ impl V30MZ {
                 let x = self.read_mem(addr_x);
                 let y = self.read_mem(addr_y);
 
-                self.update_flags_sub_8(x, y, x.wrapping_sub(y));
+                self.update_flags_sub_8(x, y, x.wrapping_sub(y), 0);
             }
             Mode::M16 => {
                 let x = self.read_mem_16(addr_x);
                 let y = self.read_mem_16(addr_y);
 
-                self.update_flags_sub_16(x, y, x.wrapping_sub(y));
+                self.update_flags_sub_16(x, y, x.wrapping_sub(y), 0);
             }
             _ => unreachable!()
         }
@@ -48,12 +48,12 @@ impl V30MZ {
                 let a = self.AW as u8;
                 let b = self.read_mem(addr);
 
-                self.update_flags_sub_8(a, b, a.wrapping_sub(b));
+                self.update_flags_sub_8(a, b, a.wrapping_sub(b), 0);
             }
             Mode::M16 => {
                 let b = self.read_mem_16(addr);
 
-                self.update_flags_sub_16(self.AW, b, self.AW.wrapping_sub(b));
+                self.update_flags_sub_16(self.AW, b, self.AW.wrapping_sub(b), 0);
             }
             _ => unreachable!()
         }
@@ -72,7 +72,7 @@ impl V30MZ {
         let addr = self.apply_segment(self.IY, self.DS1);
         match mode {
             Mode::M8 => {
-                let byte = self.read_io(self.DW);
+                let byte = self.read_io(self.DW as u8 as u16);
                 self.write_mem(addr, byte);
             }
             Mode::M16 => {
@@ -139,7 +139,7 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let byte = self.read_mem(addr);
-                self.write_io(self.DW, byte);
+                self.write_io(self.DW as u8 as u16, byte);
             }
             Mode::M16 => {
                 let word = self.read_mem_16(addr);

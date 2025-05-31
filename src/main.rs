@@ -1,5 +1,6 @@
 use std::{collections::HashMap, env};
 
+use bus::mem_bus::MemBusConnection;
 use cartridge::Mapper;
 use keypad::Keys;
 use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
@@ -75,7 +76,7 @@ fn main() -> Result<(), String> {
                 match event {
                     Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
                         // for addr in 0x1800..=0x1801 {println!("[{:04X}] = {:02X}", addr, soc.read_mem(addr))}
-                        // for addr in 0x2500..=0x2510 {println!("[{:04X}] = {:02X}", addr, soc.read_mem(addr))}
+                        // for addr in 0x2050..=0x2060 {println!("[{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // soc.get_display().debug_screen_1();
                         std::process::exit(0)
                     },

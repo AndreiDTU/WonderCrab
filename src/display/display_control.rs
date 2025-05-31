@@ -286,7 +286,7 @@ impl Display {
         let vm = word & (1 << 15) != 0;
         let hm = word & (1 << 14) != 0;
         let palette = ((word >> 9) & 0x0F) as u8;
-        let mut tile_idx = word & 0x01FF;
+        let mut tile_idx = word & 0x00FF;
         if color {
             tile_idx |= (word & 0x2000) >> 4;
         }
@@ -464,8 +464,12 @@ impl Display {
     }
 
     pub fn debug_screen_1(&mut self) {
-        println!("Element: {:#?}", self.screen_1_elements[0][0]);
+        let element = self.screen_1_elements[0][0];
+        println!("Element: {:#?}", element);
+        let base = 0x2000 + (element.tile_idx as u32) * 16;
+        println!("Reading tile from {:04X}", base);
         println!("Tile: {:#?}", self.screen_1_tiles[0][0]);
+        println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PLANAR_2BPP));
         let lo = self.read_io(0x20 + (self.screen_1_elements[0][0].palette as u16) * 2);
         let hi = self.read_io(0x21 + (self.screen_1_elements[0][0].palette as u16) * 2);
         let (c0, c1) = (lo & 0x07, (lo >> 4) & 0x07);

@@ -26,31 +26,31 @@ impl V30MZ {
         u16::from_le_bytes(*self.current_op.last_chunk::<2>().unwrap())
     }
 
-    pub fn update_flags_sub_8(&mut self, a: u8, b: u8, res: u8) {
+    pub fn update_flags_sub_8(&mut self, a: u8, b: u8, res: u8, carry: u8) {
         let old_sign = a & 0x80;
         let new_sign = res & 0x80;
 
         self.PSW.set(CpuStatus::ZERO, res == 0);
         self.PSW.set(CpuStatus::SIGN, new_sign != 0);
         self.PSW.set(CpuStatus::OVERFLOW, old_sign != b & 0x80 && old_sign != new_sign);
-        self.PSW.set(CpuStatus::CARRY, a < b);
+        self.PSW.set(CpuStatus::CARRY, a < b || (a as u16) < b as u16 + carry as u16);
         self.PSW.set(CpuStatus::PARITY, parity(res));
-        self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F);
+        self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F || (a & 0x0F) - (b & 0x0F) < carry);
     }
 
-    pub fn update_flags_sub_16(&mut self, a: u16, b: u16, res: u16) {
+    pub fn update_flags_sub_16(&mut self, a: u16, b: u16, res: u16, carry: u16) {
         let old_sign = a & 0x8000;
         let new_sign = res & 0x8000;
 
         self.PSW.set(CpuStatus::ZERO, a == b);
         self.PSW.set(CpuStatus::SIGN, new_sign != 0);
         self.PSW.set(CpuStatus::OVERFLOW, old_sign != b & 0x8000 && old_sign != new_sign);
-        self.PSW.set(CpuStatus::CARRY, a < b);
+        self.PSW.set(CpuStatus::CARRY, a < b || (a as u32) < b as u32 + carry as u32);
         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
-        self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F);
+        self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F || (a & 0x0F) - (b & 0x0F) < carry);
     }
 
-    pub fn update_flags_add_8(&mut self, a: u16, b: u16, res: u16) {
+    pub fn update_flags_add_8(&mut self, a: u16, b: u16, res: u16, carry: u16) {
         let sign = res & 0x80;
 
         self.PSW.set(CpuStatus::ZERO, res as u8 == 0);
@@ -58,10 +58,10 @@ impl V30MZ {
         self.PSW.set(CpuStatus::OVERFLOW, sign != a & 0x80 && sign != b & 0x80);
         self.PSW.set(CpuStatus::CARRY, res > 0xFF);
         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
-        self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) > 0xF);
+        self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) + carry > 0xF);
     }
 
-    pub fn update_flags_add_16(&mut self, a: u32, b: u32, res: u32) {
+    pub fn update_flags_add_16(&mut self, a: u32, b: u32, res: u32, carry: u32) {
         let sign = res & 0x8000;
 
         self.PSW.set(CpuStatus::ZERO, res as u16 == 0);
@@ -69,7 +69,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::OVERFLOW, sign != a & 0x8000 && sign != b & 0x8000);
         self.PSW.set(CpuStatus::CARRY, res > 0xFFFF);
         self.PSW.set(CpuStatus::PARITY, parity(res as u8));
-        self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) > 0xF);
+        self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) + carry > 0xF);
     }
 
     pub fn update_flags_bitwise_8(&mut self, res: u8) {
@@ -469,7 +469,7 @@ impl V30MZ {
                 self.current_op[1] as u16
             }
             Operand::NONE => {
-                self.DW as u8 as u16
+                self.DW
             }
             _ => panic!("Unsupported src operand for I/O Port"),
         }
