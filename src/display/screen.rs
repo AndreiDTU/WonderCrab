@@ -1,4 +1,4 @@
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ScreenElement {
     pub vm: bool,
     pub hm: bool,

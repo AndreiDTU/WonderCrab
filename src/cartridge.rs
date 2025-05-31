@@ -58,6 +58,7 @@ impl Cartridge {
     }
 
     pub fn write_sram(&mut self, addr: u32, byte: u8) {
+        if self.sram.len() == 0 {return}
         if self.rewrittable {
             let hi = match self.mapper {
                 Mapper::B_2001 => self.RAM_BANK_L as u32,

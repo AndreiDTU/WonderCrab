@@ -30,6 +30,9 @@ impl IOBusConnection for IOBus {
         // println!("Reading from {:02X}", port);
 
         match port {
+            // SCR_LUT ports have undefined bits
+            0x20..=0x3E => self.ports[addr as usize] & 0x77,
+
             // Lowest bit of GDMA_SOURCE_L is always clear
             0x41 => self.ports[0x41] & 0xFE,
 
@@ -113,6 +116,9 @@ impl IOBusConnection for IOBus {
             }
             // LCD_LINE is read-only
             0x02 => {}
+
+            // SCR_LUT ports have undefined bits
+            0x20..=0x3E => self.ports[addr as usize] = byte & 0x77,
 
             // Lowest bit of GDMA_SOURCE_L is always clear
             0x41 => self.ports[0x41] = byte & 0xFE,

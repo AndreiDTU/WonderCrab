@@ -85,9 +85,12 @@ impl Display {
         match self.cycle {
             // Find screen 1's tile and element data
             0 => {
-                self.get_screen_1_base();
-                self.get_sprite_base();
-                self.get_sprite_counter();
+                if self.scanline == 0 {
+                    self.get_screen_1_base();
+                    self.get_sprite_base();
+                    self.get_sprite_counter();
+                    // println!("Screen 1 base: {:04X}", self.read_mem_16(self.screen_1_base.into()));
+                }
                 self.finished_sprites = false;
 
                 let row = y / 8;
@@ -106,7 +109,7 @@ impl Display {
 
             // Find screen 2's tile and element data
             65 => {
-                self.get_screen_2_base();
+                if self.scanline == 0 {self.get_screen_2_base()};
                 self.screen_2_elements[y / 8][0] = self.read_screen_element(self.screen_2_base);
             }
             66..=129 => {
@@ -158,10 +161,8 @@ impl Display {
             }
 
             255 => {
-                self.cycle = 0;
                 self.scanline += 1;
                 self.io_bus.borrow_mut().set_lcd_line(self.scanline);
-                return;
             }
             _ => {}
         }
@@ -188,7 +189,7 @@ impl Display {
             self.io_bus.borrow_mut().set_lcd_line(self.scanline);
         }
 
-        self.cycle += 1;
+        self.cycle = self.cycle.wrapping_add(1);
     }
 
     fn get_screen_1_base(&mut self) {
@@ -290,8 +291,6 @@ impl Display {
             tile_idx |= (word & 0x2000) >> 4;
         }
 
-        // if true {println!("{}", tile_idx)};
-
         ScreenElement::new(vm, hm, palette, tile_idx)
     }
 
@@ -362,11 +361,15 @@ impl Display {
 
             self.screen_1_pixels[y][x] = self.fetch_pixel_color(palette, raw_px);
             // if true || (self.screen_1_pixels[y][x] != None && self.screen_1_pixels[y][x] != Some((0, 0, 0))) {println!("screen_1_pixels[{y}][{x}] set to {:?}", self.screen_1_pixels[y][x]);}
+        } else {
+            self.screen_2_pixels[y][x] = None;
         }
 
         if scr2 {
             self.screen_2_pixels[y][x] = self.apply_scr2_window(s2we, s2wc, x as u8, y as u8);
             // if true || (self.screen_2_pixels[y][x] != None && self.screen_2_pixels[y][x] != Some((0, 0, 0))) {println!("screen_2_pixels[{y}][{x}] set to {:?}", self.screen_2_pixels[y][x]);}
+        } else {
+            self.screen_2_pixels[y][x] = None;
         }
 
         self.lcd[x + y * 224] = 
@@ -400,11 +403,13 @@ impl Display {
     }
 
     fn fetch_pixel_color(&mut self, palette: u8, raw_px: u8) -> Option<(u8, u8, u8)> {
+        // if palette != 0 {println!("{}", palette)}
         match self.format {
             PaletteFormat::PLANAR_2BPP => {
-                if palette < 4 && raw_px == 0 {
+                if palette >= 4 && raw_px == 0 {
                     return None;
                 }
+                // if palette != 0 {println!("{}", palette)}
 
                 Some(if self.io_bus.borrow_mut().color_mode() {
                     let (r, g, b) = self.get_color_palette(palette)[raw_px as usize];
@@ -424,16 +429,19 @@ impl Display {
         }
     }
 
-    fn get_monochrome_palette(&mut self, index: u8) -> [(u8, u8, u8); 4] {
-        let (lo, hi) = self.read_io_16(0x20 + (index as u16) * 2);
+    fn get_monochrome_palette(&mut self, palette: u8) -> [(u8, u8, u8); 4] {
+        // if palette != 0 {println!("{}", palette)}
+        let (lo, hi) = self.read_io_16(0x20 + (palette as u16) * 2);
         let (c0, c1) = (lo & 0x07, (lo >> 4) & 0x07);
         let (c2, c3) = (hi & 0x07, (hi >> 4) & 0x07);
 
         std::array::from_fn(|i| {
-            let index = [c0, c1, c2, c3][i];
-            let (port, shift) = (index / 2, index % 2);
+            let raw_px = [c0, c1, c2, c3][i];
+            let (port, shift) = (raw_px / 2, raw_px % 2);
             let color_raw = (self.read_io(0x1C + port as u16) >> (shift * 4)) & 0x0F;
             let color = 0xFF - 0x11 * color_raw;
+
+            // if color != 255 {println!("color: {}, raw_px: {}", color, raw_px)};
 
             (color, color, color)
         })
@@ -453,6 +461,25 @@ impl Display {
         let base  = bank << 11;
         let idx   = (row * 32 + col) as u32;
         self.mem_bus.borrow_mut().read_mem_16(base + idx*2)
+    }
+
+    pub fn debug_screen_1(&mut self) {
+        println!("Element: {:#?}", self.screen_1_elements[0][0]);
+        println!("Tile: {:#?}", self.screen_1_tiles[0][0]);
+        let lo = self.read_io(0x20 + (self.screen_1_elements[0][0].palette as u16) * 2);
+        let hi = self.read_io(0x21 + (self.screen_1_elements[0][0].palette as u16) * 2);
+        let (c0, c1) = (lo & 0x07, (lo >> 4) & 0x07);
+        let (c2, c3) = (hi & 0x07, (hi >> 4) & 0x07);
+        println!("Palette raw: {:#?}", (c0, c1, c2, c3));
+        for i in 0..8 {
+            let (port, shift) = (i / 2, i % 2);
+            let addr = 0x1C + port;
+            let gradation = self.read_io(addr) >> (shift * 4) & 0x0F;
+            println!("Gradation {} at port {:02X}, from raw_px {}", gradation, addr, i);
+        };
+        println!("Port 0x1F: {:02X}", self.read_io(0x1F));
+        println!("Palette RGB: {:#?}", self.get_monochrome_palette(self.screen_1_elements[0][0].palette));
+        println!("{:#?}", self.read_io_16(0x20));
     }
 
     #[cfg(test)]

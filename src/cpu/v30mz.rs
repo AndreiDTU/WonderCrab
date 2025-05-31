@@ -100,18 +100,10 @@ impl MemBusConnection for V30MZ {
 
 impl IOBusConnection for V30MZ {
     fn read_io(&mut self, addr: u16) -> u8 {
-        if self.current_op.len() > 0 {
-            // let op = &CPU_OP_CODES[self.current_op[0] as usize];
-            // println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
-        }
         self.io_bus.borrow_mut().read_io(addr)
     }
 
     fn write_io(&mut self, addr: u16, byte: u8) {
-        if self.current_op.len() > 0 {
-            // let op = &CPU_OP_CODES[self.current_op[0] as usize];
-            // println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
-        }
         self.io_buffer.insert(addr, byte);
     }
 }
@@ -550,12 +542,12 @@ impl V30MZ {
                 match sub_op.code {
                     0 => self.inc(op.op1, op.mode, sub_op.extra),
                     1 => self.dec(op.op1, op.mode, sub_op.extra),
-                    2 => self.call(op.op1, op.mode, sub_op.extra),
-                    3 => self.call(op.op1, op.mode, sub_op.extra),
-                    4 => self.branch_op(op.op1, op.mode, sub_op.extra),
-                    5 => self.branch_op(op.op1, op.mode, sub_op.extra),
+                    2 => self.call(op.op1, Mode::M16, sub_op.extra),
+                    3 => self.call(op.op1, Mode::M16, sub_op.extra),
+                    4 => self.branch_op(op.op1, Mode::M16, sub_op.extra),
+                    5 => self.branch_op(op.op1, Mode::M16, sub_op.extra),
                     6 => self.push_op(Operand::MEMORY, sub_op.extra),
-                    7 => panic!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name),
+                    7 => panic!("INVALID {:05X} {:02X} {}", self.get_pc_address(), op.code, op.name),
                     _ => unreachable!()
                 }
             }

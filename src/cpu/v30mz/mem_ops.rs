@@ -18,7 +18,7 @@ impl V30MZ {
             Operand::NONE => self.PSW.bits(),
             _ => self.resolve_src_16(src, extra)
         };
-        if src == self.SP {println!("Pushing src = {:04X}", src)};
+        // if src == self.SP {println!("Pushing src = {:04X}", src)};
         self.push(src);
     }
 
@@ -138,11 +138,15 @@ impl V30MZ {
         let byte = self.current_op[1];
         let (address, _) = self.resolve_mem_operand(byte, Mode::M16, extra);
 
-        match address {
-            MemOperand::Offset(offset) => self.AW = offset,
-            MemOperand::Register(RegisterType::RW(r)) => self.AW = *r,
+        let src = match address {
+            MemOperand::Offset(offset) => offset,
+            MemOperand::Register(RegisterType::RW(r)) => *r,
             _ => unreachable!(),
-        }
+        };
+
+        let bits = (self.current_op[1] >> 3) & 7;
+
+        self.write_reg_operand_16(src, bits);
     }
 
     pub fn cvtbw(&mut self) {
@@ -213,7 +217,7 @@ impl V30MZ {
 
         let dest = self.get_io_address(dest);
         match mode {
-            Mode::M8 => self.write_io(dest, self.AW as u8),
+            Mode::M8 => self.write_io(dest as u8 as u16, self.AW as u8),
             Mode::M16 => self.write_io_16(dest, self.AW),
             Mode::M32 => unreachable!()
         }
@@ -230,21 +234,19 @@ impl V30MZ {
                 self.write_src_to_dest_8(op2, src1, extra);
             }
             Mode::M16 => {
-                match op2 {
-                    Operand::MEMORY => {
-                        let src1 = self.resolve_src_16(op1, extra);
-                        let src2 = self.resolve_src_16(op2, extra);
-                        self.write_src_to_dest_16(op1, src2, extra);
-                        self.write_src_to_dest_16(op2, src1, extra);
-                    }
-                    _ => {
-                        let src1 = self.AW;
-                        let bits = self.current_op[0] & 0b111;
-                        let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
-                        let src2 = *r;
-                        *r = src1;
-                        self.AW = src2;
-                    }
+                if op1 == Operand::MEMORY || op2 == Operand::MEMORY {
+                    let src1 = self.resolve_src_16(op1, extra);
+                    let src2 = self.resolve_src_16(op2, extra);
+                    self.write_src_to_dest_16(op1, src2, extra);
+                    self.write_src_to_dest_16(op2, src1, extra);
+                } else {
+                    let src1 = self.AW;
+                    let bits = self.current_op[0] & 0b111;
+                    let RegisterType::RW(r) = self.resolve_register_operand(bits, Mode::M16) else {unreachable!()};
+                    let src2 = *r;
+                    *r = src1;
+                    self.AW = src2;
+
                 }
             }
             _ => unreachable!(),

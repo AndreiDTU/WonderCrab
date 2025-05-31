@@ -73,7 +73,12 @@ fn main() -> Result<(), String> {
 
             for event in event_pump.poll_iter() {
                 match event {
-                    Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => std::process::exit(0),
+                    Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
+                        // for addr in 0x1800..=0x1801 {println!("[{:04X}] = {:02X}", addr, soc.read_mem(addr))}
+                        // for addr in 0x2500..=0x2510 {println!("[{:04X}] = {:02X}", addr, soc.read_mem(addr))}
+                        // soc.get_display().debug_screen_1();
+                        std::process::exit(0)
+                    },
                     Event::KeyDown { keycode, .. } => {
                         if let Some(key) = keycode {
                             if let Some(key) = key_map.get(&key) {

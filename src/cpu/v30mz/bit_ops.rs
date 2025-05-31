@@ -138,12 +138,10 @@ impl V30MZ {
             Mode::M16 => {
                 let dest = self.resolve_src_16(Operand::MEMORY, extra);
                 let mut res = dest;
-                let mut old_msb = res >> 15;
 
                 for _ in 0..src {
                     let old_carry = self.PSW.contains(CpuStatus::CARRY) as u16;
                     self.PSW.set(CpuStatus::CARRY, res & 0x8000 != 0);
-                    old_msb = res >> 15;
                     res = (res << 1) | old_carry;
                 }
 
@@ -229,10 +227,10 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let dest = self.resolve_src_8(Operand::MEMORY, extra);
-                let res = dest << src;
+                let res = dest.wrapping_shl(src as u32);
 
                 if src != 0 {
-                    self.PSW.set(CpuStatus::CARRY, dest << (src - 1) != 0);
+                    self.PSW.set(CpuStatus::CARRY, dest.wrapping_shl(src as u32 - 1) != 0);
                 }
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -244,10 +242,10 @@ impl V30MZ {
             }
             Mode::M16 => {
                 let dest = self.resolve_src_16(Operand::MEMORY, extra);
-                let res = dest << src;
+                let res = dest.wrapping_shl(src as u32);
 
                 if src != 0 {
-                    self.PSW.set(CpuStatus::CARRY, dest << (src - 1) != 0);
+                    self.PSW.set(CpuStatus::CARRY, dest.wrapping_shl(src as u32 - 1) != 0);
                 }
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -269,12 +267,12 @@ impl V30MZ {
         match mode {
             Mode::M8 => {
                 let dest = self.resolve_src_8(Operand::MEMORY, extra);
-                let res = dest >> src;
+                let res = dest.wrapping_shr(src as u32);
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
                 self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
-                self.PSW.set(CpuStatus::OVERFLOW, dest & 0x80 != res & 0x80);
-                self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
+                self.PSW.set(CpuStatus::OVERFLOW, ((res >> 6) ^ (res >> 7)) & 1 != 0);
+                if src != 0 {self.PSW.set(CpuStatus::CARRY, dest.wrapping_shr(src as u32 - 1) != 0)};
                 self.PSW.set(CpuStatus::PARITY, parity(res));
 
                 self.write_src_to_dest_8(Operand::MEMORY, res, extra);
@@ -285,14 +283,16 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
                 self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
-                self.PSW.set(CpuStatus::OVERFLOW, dest & 0x8000 != res & 0x8000);
-                self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
+                self.PSW.set(CpuStatus::OVERFLOW, ((res >> 14) ^ (res >> 15)) & 1 != 0);
+                if src != 0 {self.PSW.set(CpuStatus::CARRY, dest.wrapping_shr(src as u32 - 1) != 0)};
                 self.PSW.set(CpuStatus::PARITY, parity(res as u8));
 
                 self.write_src_to_dest_16(Operand::MEMORY, res, extra);
             }
             _ => unreachable!()
         }
+
+        self.PSW.remove(CpuStatus::AUX_CARRY);
     }
 
     pub fn shra(&mut self, code: u8, mode: Mode, extra: u8) {
@@ -305,8 +305,8 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
                 self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
-                self.PSW.set(CpuStatus::OVERFLOW, dest & 0x80 != res & 0x80);
-                self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
+                self.PSW.set(CpuStatus::OVERFLOW, ((res >> 6) ^ (res >> 7)) & 1 != 0);
+                if src != 0 {self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0)};
                 self.PSW.set(CpuStatus::PARITY, parity(res));
 
                 self.write_src_to_dest_8(Operand::MEMORY, res, extra);
@@ -317,8 +317,8 @@ impl V30MZ {
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
                 self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
-                self.PSW.set(CpuStatus::OVERFLOW, dest & 0x8000 != res & 0x8000);
-                self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0);
+                self.PSW.set(CpuStatus::OVERFLOW, ((res >> 14) ^ (res >> 15)) & 1 != 0);
+                if src != 0 {self.PSW.set(CpuStatus::CARRY, dest >> (src - 1) != 0)};
                 self.PSW.set(CpuStatus::PARITY, parity(res as u8));
 
                 self.write_src_to_dest_16(Operand::MEMORY, res, extra);

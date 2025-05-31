@@ -526,7 +526,7 @@ impl V30MZ {
             Mode::M8 => {
                 self.expect_op_bytes(2);
                 let src = self.resolve_mem_src_8(self.current_op[1], extra);
-                let res = src.wrapping_neg();
+                let res = 0u8.wrapping_sub(src);
                 self.write_mem_operand_8(res, extra);
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);
@@ -539,7 +539,7 @@ impl V30MZ {
             Mode::M16 => {
                 self.expect_op_bytes(2);
                 let src = self.resolve_mem_src_16(self.current_op[1], extra);
-                let res = src.wrapping_neg();
+                let res = 0u16.wrapping_sub(src);
                 self.write_mem_operand_16(res, extra);
 
                 self.PSW.set(CpuStatus::ZERO, res == 0);

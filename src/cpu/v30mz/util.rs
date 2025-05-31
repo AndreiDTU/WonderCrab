@@ -103,11 +103,10 @@ impl V30MZ {
     }
 
     pub fn push(&mut self, src: u16) {
-        let old_SP = self.SP;
         self.SP = self.SP.wrapping_sub(2);
         let addr = self.get_stack_address();
         self.write_mem_16(addr, src);
-        if src == old_SP {println!("new SP = {:04X}", self.SP)}
+        // if src == old_SP {println!("new SP = {:04X}", self.SP)}
     }
 
     pub fn pop(&mut self) -> u16 {
@@ -470,7 +469,7 @@ impl V30MZ {
                 self.current_op[1] as u16
             }
             Operand::NONE => {
-                self.DW
+                self.DW as u8 as u16
             }
             _ => panic!("Unsupported src operand for I/O Port"),
         }
