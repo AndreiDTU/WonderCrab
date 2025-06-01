@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use super::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OpCode {
     pub code: u8,      // First byte
     pub name: String,  // Mnemonic
@@ -323,7 +323,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
         OpCode::one_byte(0xE0, "DBNZNE",  Operand::NONE,        Operand::IMMEDIATE_S, Mode::M8,  3,  3),
         OpCode::one_byte(0xE1, "DBNZE",   Operand::NONE,        Operand::IMMEDIATE_S, Mode::M8,  3,  3),
         OpCode::one_byte(0xE2, "DBNZ",    Operand::NONE,        Operand::IMMEDIATE_S, Mode::M8,  2,  3),
-        OpCode::one_byte(0xE3, "BCWZ",    Operand::NONE,        Operand::NONE,        Mode::M8,  1,  3),
+        OpCode::one_byte(0xE3, "BCWZ",    Operand::NONE,        Operand::IMMEDIATE_S, Mode::M8,  1,  3),
         OpCode::one_byte(0xE4, "IN",      Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M8,  6,  0),
         OpCode::one_byte(0xE5, "IN",      Operand::ACCUMULATOR, Operand::IMMEDIATE,   Mode::M16, 6,  0),
         OpCode::one_byte(0xE6, "OUT",     Operand::IMMEDIATE,   Operand::ACCUMULATOR, Mode::M8,  6,  0),

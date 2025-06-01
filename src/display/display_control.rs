@@ -423,6 +423,7 @@ impl Display {
                 if raw_px == 0 {
                     return None;
                 }
+                
                 let (r, g, b) = self.get_color_palette(palette)[raw_px as usize];
 
                 Some((r * 17, g * 17, b * 17))

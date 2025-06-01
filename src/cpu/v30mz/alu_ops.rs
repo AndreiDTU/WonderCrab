@@ -9,7 +9,7 @@ impl V30MZ {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra) as u16;
                 let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 } as u16;
@@ -23,9 +23,9 @@ impl V30MZ {
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra) as u32;
                 let src = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 } as u32;
@@ -47,7 +47,7 @@ impl V30MZ {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra) as u16;
                 let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 } as u16;
@@ -63,9 +63,9 @@ impl V30MZ {
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra) as u32;
                 let src = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 } as u32;
@@ -166,7 +166,7 @@ impl V30MZ {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra);
                 let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 };
@@ -178,9 +178,9 @@ impl V30MZ {
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra);
                 let src = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 };
@@ -230,7 +230,6 @@ impl V30MZ {
     pub fn div(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_8(self.current_op[1], extra) as i8 as i16;
                 if divisor == 0 && self.AW != 0x8000 {
                     self.PSW.remove(CpuStatus::AUX_CARRY);
@@ -265,7 +264,6 @@ impl V30MZ {
                 self.AW = swap_l(self.AW, quotient as i8 as u8);
             }
             Mode::M16 => {
-                self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_16(self.current_op[1], extra) as i16 as i32;
                 if divisor == 0 {
                     self.PSW.remove(CpuStatus::CARRY);
@@ -310,7 +308,6 @@ impl V30MZ {
     pub fn divu(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_8(self.current_op[1], extra) as u16;
                 if divisor == 0 {
                     self.PSW.remove(CpuStatus::AUX_CARRY);
@@ -340,7 +337,6 @@ impl V30MZ {
                 self.AW = swap_l(self.AW, quotient as u8);
             }
             Mode::M16 => {
-                self.expect_op_bytes(2);
                 let divisor = self.resolve_mem_src_16(self.current_op[1], extra) as u32;
                 if divisor == 0 {
                     self.PSW.remove(CpuStatus::CARRY);
@@ -375,11 +371,6 @@ impl V30MZ {
             }
             _ => unreachable!()
         }
-    }
-
-    pub fn fpo1(&mut self) {
-        self.expect_op_bytes(2);
-        self.resolve_mem_operand(self.current_op[1], Mode::M16, 0);
     }
 
     pub fn inc(&mut self, op: Operand, mode: Mode, extra: u8) {
@@ -420,7 +411,6 @@ impl V30MZ {
             None => {
                 match mode {
                     Mode::M8 => {
-                        self.expect_op_bytes(2);
                         let factor = self.resolve_mem_src_8(self.current_op[1], extra) as i8 as i16;
 
                         self.AW = ((self.AW as u8 as i8 as i16) * factor) as u16;
@@ -429,7 +419,6 @@ impl V30MZ {
                         self.PSW.set(CpuStatus::CARRY, sign_ext);
                     }
                     Mode::M16 => {
-                        self.expect_op_bytes(2);
                         let factor1 = self.resolve_mem_src_16(self.current_op[1], extra) as i16 as i32;
                         let factor2 = self.AW as i16 as i32;
                         let result = factor1 * factor2;
@@ -444,11 +433,10 @@ impl V30MZ {
                 }
             }
             Some(op3) => {
-                self.expect_op_bytes(2);
                 let factor1 = self.resolve_mem_src_16(self.current_op[1], extra) as i16;
                 let factor2 = match op3 {
-                    Operand::IMMEDIATE_S => self.expect_extra_byte() as i8 as i16,
-                    Operand::IMMEDIATE => self.expect_extra_word() as i16,
+                    Operand::IMMEDIATE_S => self.get_imm8() as i8 as i16,
+                    Operand::IMMEDIATE => self.get_imm16() as i16,
                     _ => unreachable!(),
                 };
 
@@ -471,7 +459,6 @@ impl V30MZ {
     pub fn mulu(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                self.expect_op_bytes(2);
                 let factor = self.resolve_mem_src_8(self.current_op[1], extra) as u16;
                 let result = self.AW as u8 as u16 * factor;
                 self.AW = result;
@@ -480,7 +467,6 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::CARRY, result >> 8 != 0);
             }
             Mode::M16 => {
-                self.expect_op_bytes(2);
                 let src = self.resolve_mem_src_16(self.current_op[1], extra) as u32;
                 let result = self.AW as u32 * src;
                 self.AW = result as u16;
@@ -500,7 +486,6 @@ impl V30MZ {
     pub fn neg(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
-                self.expect_op_bytes(2);
                 let src = self.resolve_mem_src_8(self.current_op[1], extra);
                 let res = 0u8.wrapping_sub(src);
                 self.write_mem_operand_8(res, extra);
@@ -513,7 +498,6 @@ impl V30MZ {
                 self.PSW.set(CpuStatus::AUX_CARRY, src & 0xF != 0);
             }
             Mode::M16 => {
-                self.expect_op_bytes(2);
                 let src = self.resolve_mem_src_16(self.current_op[1], extra);
                 let res = 0u16.wrapping_sub(src);
                 self.write_mem_operand_16(res, extra);
@@ -530,7 +514,6 @@ impl V30MZ {
     }
 
     pub fn cvtbd(&mut self) {
-        self.expect_op_bytes(2);
         let src = self.current_op[1];
         if src == 0 {
             return self.raise_exception(0);
@@ -544,7 +527,6 @@ impl V30MZ {
     }
 
     pub fn cvtdb(&mut self) {
-        self.expect_op_bytes(2);
         let src = self.current_op[1] as u16;
 
         let (AH, AL) = ((self.AW >> 8) as u8, self.AW as u8);
@@ -563,7 +545,7 @@ impl V30MZ {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra);
                 let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 };
@@ -576,9 +558,9 @@ impl V30MZ {
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra);
                 let src = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 };
@@ -598,7 +580,7 @@ impl V30MZ {
             Mode::M8 => {
                 let old_dest = self.resolve_src_8(op1, extra);
                 let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 };
@@ -613,9 +595,9 @@ impl V30MZ {
             Mode::M16 => {
                 let old_dest = self.resolve_src_16(op1, extra);
                 let src = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 };

@@ -78,7 +78,7 @@ fn main() -> Result<(), String> {
                         // for addr in 0x17C0..=0x17C1 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // for addr in 0x3080..=0x308F {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // soc.get_display().debug_screen_1();
-                        std::process::exit(0)
+                        return Ok(());
                     },
                     Event::KeyDown { keycode, .. } => {
                         if let Some(key) = keycode {

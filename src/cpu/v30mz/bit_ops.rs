@@ -8,7 +8,7 @@ impl V30MZ {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 };
@@ -21,9 +21,9 @@ impl V30MZ {
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 };
@@ -56,7 +56,7 @@ impl V30MZ {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 };
@@ -69,9 +69,9 @@ impl V30MZ {
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 };
@@ -348,7 +348,7 @@ impl V30MZ {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 };
@@ -359,9 +359,9 @@ impl V30MZ {
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 };
@@ -378,7 +378,7 @@ impl V30MZ {
             Mode::M8 => {
                 let a = self.resolve_src_8(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_byte()
+                    self.get_imm8()
                 } else {
                     self.resolve_src_8(op2, extra)
                 };
@@ -391,9 +391,9 @@ impl V30MZ {
             Mode::M16 => {
                 let a = self.resolve_src_16(op1, extra);
                 let b = if op2 == Operand::IMMEDIATE_S {
-                    self.expect_extra_byte() as i8 as i16 as u16
+                    self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.expect_extra_word()
+                    self.get_imm16()
                 } else {
                     self.resolve_src_16(op2, extra)
                 };
@@ -419,12 +419,17 @@ mod test {
         let mut soc = SoC::test_build();
         soc.set_wram(vec![
             0x08, 0xC1, // CL <- AL & CL
+            0x08, 0xC3, // AL <- AL & BL
         ]);
         soc.get_cpu().AW = 0xFE;
         soc.get_cpu().CW = 0xEF;
 
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().CW, 0xFF);
+        soc.get_cpu().BW = 0x01;
+        soc.get_cpu().AW = 0x01;
+        soc.tick_cpu_no_cycles();
+        assert_eq_hex!(soc.get_cpu().AW, 0x01);
     }
 
     #[test]

@@ -83,15 +83,11 @@ impl V30MZ {
         }
 
         if (op1, op2) == (Operand::MEMORY, Operand::IMMEDIATE) {
-            self.expect_op_bytes(2);
-            let byte = self.current_op[1];
-            self.resolve_mem_operand(byte, mode, extra);
-            
             if mode == Mode::M8 {
-                let src = self.expect_extra_byte();
+                let src = self.get_imm8();
                 self.write_mem_operand_8(src, extra);
             } else {
-                let src = self.expect_extra_word();
+                let src = self.get_imm16();
                 self.write_mem_operand_16(src, extra);
             }
             return;
@@ -112,7 +108,6 @@ impl V30MZ {
                 }
             }
             Some(_) => {
-                self.expect_op_bytes(2);
                 let byte = self.current_op[1];
                 let src = self.resolve_mem_src_32(byte, extra);
 
@@ -131,9 +126,6 @@ impl V30MZ {
     pub fn ldea(&mut self, extra: u8) {
         // Calculates the offset of a memory operand and stores
         // the result into a 16-bit register.
-
-        // LDEA requires at least one byte of operand code
-        self.expect_op_bytes(2);
 
         let byte = self.current_op[1];
         let (address, _) = self.resolve_mem_operand(byte, Mode::M16, extra);
@@ -571,14 +563,15 @@ mod test {
     #[test]
     fn test_0x98_cvtbw() {
         let mut soc = SoC::test_build();
+
+        soc.set_wram(vec![0x98, 0x98]);
         
         soc.get_cpu().AW = 0x00FF;
-        soc.get_cpu().current_op = vec![0x98];
         soc.tick_cpu_no_cycles();
+        assert_eq_hex!(soc.get_cpu().PC, 0x0001);
         assert_eq_hex!(soc.get_cpu().AW, 0xFFFF);
 
         soc.get_cpu().AW = 0xFF00;
-        soc.get_cpu().current_op = vec![0x98];
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().AW, 0x0000);
     }
@@ -587,13 +580,13 @@ mod test {
     fn test_0x99_cvtwl() {
         let mut soc = SoC::test_build();
 
+        soc.set_wram(vec![0x99, 0x99]);
+
         soc.get_cpu().AW = 0x8000;
-        soc.get_cpu().current_op = vec![0x99];
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().DW, 0xFFFF);
 
         soc.get_cpu().AW = 0x7FFF;
-        soc.get_cpu().current_op = vec![0x99];
         soc.tick_cpu_no_cycles();
         assert_eq_hex!(soc.get_cpu().DW, 0x0000);
     }

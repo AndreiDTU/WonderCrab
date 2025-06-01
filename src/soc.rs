@@ -14,7 +14,7 @@ pub struct SoC {
     // I/O
     pub(super) io_bus: Rc<RefCell<IOBus>>,
 
-    cycles: u32,
+    cycles: usize,
 }
 
 impl MemBusConnection for SoC {
@@ -60,23 +60,27 @@ impl SoC {
             }
         }
 
-        if self.dma.cycles > 0 {
+        let op_cycles = if self.dma.cycles > 0 {
             self.dma.tick();
+            1
         } else {
-            self.cpu.tick();
-        }
+            self.cpu.tick()
+        };
 
         if self.mem_bus.borrow().owner == Owner::CPU {
             return false;
         }
 
-        self.display.tick();
+        for _ in 0..op_cycles {
+            self.display.tick();
+        }
 
-        if self.cycles == 40703 {
+        self.cycles += op_cycles;
+
+        if self.cycles >= 40703 {
             self.cycles = 0;
             return true;
         }
-        self.cycles += 1;
         return false;
     }
 

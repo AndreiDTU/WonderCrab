@@ -119,7 +119,7 @@ impl V30MZ {
             
             PSW: CpuStatus::from_bits_truncate(0xF002),
 
-            current_op: Vec::with_capacity(8),
+            current_op: Vec::with_capacity(6),
             segment_override: None,
             halt: false, rep: false, rep_z: false,
             no_interrupt: false,
@@ -133,27 +133,29 @@ impl V30MZ {
         }
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self) -> usize {
         // println!("Tick: halt={}, cycles={}", self.halt, self.cycles);
         self.PSW = self.PSW.union(CpuStatus::from_bits_truncate(0xF002));
         self.PSW.remove(CpuStatus::FIXED_OFF_1);
         self.PSW.remove(CpuStatus::FIXED_OFF_2);
         if self.cycles == 0 {
             if !self.rep && !self.no_interrupt {if self.poll_interrupts() {}};
-            if !self.halt {self.execute()};
+            if !self.halt {
+                self.execute();
+                return self.cycles as usize;
+            } else {
+                return 256;
+            };
         } else {
             self.cycles -= 1;
-            if self.cycles == 0 {self.commit_writes()};
+            if self.cycles == 0 {self.commit_writes()}
         }
+
+        self.cycles as usize
     }
 
     pub fn execute(&mut self) {
-        // CPU requires at least one byte of instruction code to execute
-        self.expect_op_bytes(1);
-
-        let op = &CPU_OP_CODES[self.current_op[0] as usize];
-
-        // let old_SP = self.SP;
+        let op = self.allocate_instruction().clone();
 
         if self.trace {
             println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);
@@ -335,7 +337,6 @@ impl V30MZ {
 
             // Immediate Group
             0x80..=0x83 => {
-                self.expect_op_bytes(2);
                 let sub_op = &IMMEDIATE_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 self.base = sub_op.cycles;
                 self.cycles = self.base;
@@ -371,7 +372,7 @@ impl V30MZ {
             0x9F => {
                 self.AW = swap_h(self.AW, self.PSW.bits() as u8);
             }
-            0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(op, op.extra),
+            0x88..=0x8C | 0x8E | 0xA0..=0xA3 | 0xB0..=0xBF | 0xC4..=0xC7 => self.mov(&op, op.extra),
 
             // LDEA
             0x8D => self.ldea(op.extra),
@@ -405,7 +406,6 @@ impl V30MZ {
 
             // Shift Group
             0xC0 | 0xC1 | 0xD0..=0xD3 => {
-                self.expect_op_bytes(2);
                 let sub_op = &SHIFT_GROUP[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 match sub_op.code {
                     0 => self.rol(op.code, op.mode, op.extra),
@@ -460,7 +460,7 @@ impl V30MZ {
             0xD7 => self.trans(),
 
             // FPO1
-            0xD8..=0xDF => self.fpo1(),
+            0xD8..=0xDF => {}
 
             // IN
             0xE4 | 0xE5 | 0xEC | 0xED => self.in_op(op.mode, op.op2),
@@ -482,7 +482,6 @@ impl V30MZ {
 
             // Group 1
             0xF6 | 0xF7 => {
-                self.expect_op_bytes(2);
                 let sub_op = &GROUP_1[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 self.base = sub_op.cycles;
                 self.cycles = self.base;
@@ -536,7 +535,6 @@ impl V30MZ {
 
             // Group 2
             0xFE | 0xFF => {
-                self.expect_op_bytes(2);
                 let sub_op = &GROUP_2[(self.current_op[1] & 0b0011_1000) as usize >> 3];
                 self.base = sub_op.cycles;
                 self.cycles = self.base;

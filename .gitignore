@@ -5,3 +5,4 @@ lcov.info
 *.log
 *.ieeprom
 *.eeprom
+flamegraph.svg

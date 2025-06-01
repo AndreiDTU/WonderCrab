@@ -10,3 +10,6 @@ sdl2 = "0.37.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
+
+[profile.release]
+debug = true
