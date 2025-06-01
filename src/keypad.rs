@@ -30,9 +30,9 @@ impl Keypad {
     }
 
     pub fn poll(&mut self, poll: u8) {
-        let action = 0x0F * (poll & 4);
-        let x = 0x0F * (poll & 2);
-        let y = 0x0F * (poll & 1);
+        let action = if poll & 0x04 != 0 {0x0F} else {0x00};
+        let x =      if poll & 0x02 != 0 {0x0F} else {0x00};
+        let y =      if poll & 0x01 != 0 {0x0F} else {0x00};
 
         let state = self.state.bits();
 
