@@ -31,7 +31,8 @@ impl IOBusConnection for IOBus {
 
         match port {
             // SCR_LUT ports have undefined bits
-            0x20..=0x3E => self.ports[addr as usize] & 0x77,
+            0x28 | 0x2A | 0x2C | 0x2E | 0x38 | 0x3A | 0x3C | 0x3E => self.ports[addr as usize] & 0x70,
+            0x20..=0x3F => self.ports[addr as usize] & 0x77,
 
             // Lowest bit of GDMA_SOURCE_L is always clear
             0x41 => self.ports[0x41] & 0xFE,
