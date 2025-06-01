@@ -168,15 +168,11 @@ impl Display {
         }
 
         if self.scanline == 0 && self.cycle < 224 {
-            self.transform_tiles(0, (144 - 1) / 8);
             self.overlay_pixels(self.cycle, 144 - 1);
         }
 
         // Display pixels of previous scanline
         if (1..=143).contains(&self.scanline) && self.cycle < 224 {
-            if self.cycle % 8 == 0 && self.scanline % 8 == 0 {
-                self.transform_tiles(self.cycle / 8, self.scanline / 8);
-            }
             self.overlay_pixels(self.cycle, self.scanline - 1);
         }
 
@@ -210,28 +206,6 @@ impl Display {
 
     fn get_sprite_counter(&mut self) {
         self.sprite_counter = self.read_io(0x06) & 0x7F;
-    }
-
-    fn transform_tiles(&mut self, x: u8, y: u8) {
-        let tile1 = &mut self.screen_1_tiles[y as usize][x as usize];
-        let tile2 = &mut self.screen_2_tiles[y as usize][x as usize];
-        
-        let element1 = self.screen_1_elements[y as usize][x as usize];
-        let element2 = self.screen_2_elements[y as usize][x as usize];
-
-        if element1.vm {tile1.reverse()}
-        if element1.hm {
-            for row in tile1 {
-                row.reverse();
-            }
-        }
-
-        if element2.vm {tile2.reverse()}
-        if element2.hm {
-            for row in tile2 {
-                row.reverse();
-            }
-        }
     }
 
     fn read_tile(&mut self, index: u16, format: PaletteFormat) -> [[u8; 8]; 8] {
@@ -352,15 +326,17 @@ impl Display {
             let scroll_x = self.read_io(0x10);
             let scroll_y = self.read_io(0x11);
 
-            let pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
-            let element = (pixel.0 / 8, pixel.1 / 8);
+            let mut pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
+            let element_idx = (pixel.0 / 8, pixel.1 / 8);
 
+            let element = self.screen_1_elements[element_idx.1 as usize][element_idx.0 as usize];
 
-            let palette = self.screen_1_elements[element.1 as usize][element.0 as usize].palette;
-            let raw_px = self.screen_1_tiles[element.1 as usize][element.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
+            if element.hm {pixel.0 = 7 - pixel.0};
+            if element.vm {pixel.1 = 7 - pixel.1};
 
-            self.screen_1_pixels[y as usize][x as usize] = self.fetch_pixel_color(palette, raw_px);
-            // if true || (self.screen_1_pixels[y][x] != None && self.screen_1_pixels[y][x] != Some((0, 0, 0))) {println!("screen_1_pixels[{y}][{x}] set to {:?}", self.screen_1_pixels[y][x]);}
+            let raw_px = self.screen_1_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
+
+            self.screen_1_pixels[y as usize][x as usize] = self.fetch_pixel_color(element.palette, raw_px);
         } else {
             self.screen_1_pixels[y as usize][x as usize] = None;
         }
@@ -392,14 +368,17 @@ impl Display {
         let scroll_x = self.read_io(0x12);
         let scroll_y = self.read_io(0x13);
 
-        let pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
-        let element = (pixel.0 / 8, pixel.1 / 8);
+        let mut pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
+        let element_idx = (pixel.0 / 8, pixel.1 / 8);
 
+        let element = self.screen_2_elements[element_idx.1 as usize][element_idx.0 as usize];
 
-        let palette = self.screen_2_elements[element.1 as usize][element.0 as usize].palette;
-        let raw_px = self.screen_2_tiles[element.1 as usize][element.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
+        if element.hm {pixel.0 = 7 - pixel.0};
+        if element.vm {pixel.1 = 7 - pixel.1};
 
-        self.fetch_pixel_color(palette, raw_px)
+        let raw_px = self.screen_2_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
+
+        self.fetch_pixel_color(element.palette, raw_px)
     }
 
     fn fetch_pixel_color(&mut self, palette: u8, raw_px: u8) -> Option<(u8, u8, u8)> {
