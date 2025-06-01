@@ -66,6 +66,9 @@ impl IOBusConnection for IOBus {
             // VBLANK is always enabled in INT_ENABLE
             0xB2 => self.ports[0xB2] | (1 << 6),
 
+            // SERIAL_STATUS
+            0xB3 => 0x84,
+
             // Reading INT_CAUSE clears edge interrupts
             0xB4 => {
                 let cause = self.ports[0xB4];
@@ -152,6 +155,9 @@ impl IOBusConnection for IOBus {
 
             // VBLANK is always enabled in INT_ENABLE
             0xB2 => self.ports[0xB2] = byte | (1 << 6),
+
+            // SERIAL_STATUS is read-only
+            0xB3 => {}
 
             // INT_CAUSE is read-only
             0xB4 => {}

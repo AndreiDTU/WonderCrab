@@ -139,7 +139,7 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::FIXED_OFF_1);
         self.PSW.remove(CpuStatus::FIXED_OFF_2);
         if self.cycles == 0 {
-            if !self.rep && !self.no_interrupt {if self.poll_interrupts() {}};
+            if !self.rep && !self.no_interrupt {if self.poll_interrupts() {return 1}};
             if !self.halt {
                 self.execute();
                 return self.cycles as usize;
@@ -151,11 +151,12 @@ impl V30MZ {
             if self.cycles == 0 {self.commit_writes()}
         }
 
-        self.cycles as usize
+        0
     }
 
     pub fn execute(&mut self) {
         let op = self.allocate_instruction().clone();
+        self.no_interrupt = false;
 
         if self.trace {
             println!("{:05X} {:02X} {}", self.get_pc_address(), op.code, op.name);

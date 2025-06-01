@@ -75,8 +75,8 @@ fn main() -> Result<(), String> {
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
-                        // for addr in 0x17C0..=0x17C1 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
-                        // for addr in 0x3080..=0x308F {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
+                        // for addr in 0x3980..=0x3981 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
+                        // for addr in 0x29C0..=0x29CF {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // soc.get_display().debug_screen_1();
                         return Ok(());
                     },
@@ -97,6 +97,8 @@ fn main() -> Result<(), String> {
                     _ => {}
                 }
             }
+
+            // println!("New frame!");
 
             // frames += 1; if frames == 2 {std::process::exit(0);}
         }

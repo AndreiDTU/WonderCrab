@@ -180,7 +180,7 @@ impl Display {
             self.overlay_pixels(self.cycle, self.scanline - 1);
         }
 
-        if self.scanline == 143 && self.cycle == 225 {
+        if self.scanline == 144 && self.cycle == 225 {
             self.io_bus.borrow_mut().vblank();
         }
 
@@ -466,14 +466,14 @@ impl Display {
     }
 
     pub fn debug_screen_1(&mut self) {
-        let element = self.screen_1_elements[31][0];
+        let element = self.screen_1_elements[6][0];
         println!("Element: {:#?}", element);
         let base = 0x2000 + (element.tile_idx as u32) * 16;
         println!("Reading tile from {:04X}", base);
-        println!("Tile: {:#?}", self.screen_1_tiles[31][0]);
+        println!("Tile: {:#?}", self.screen_1_tiles[6][0]);
         println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PLANAR_2BPP));
-        let lo = self.read_io(0x20 + (self.screen_1_elements[31][0].palette as u16) * 2);
-        let hi = self.read_io(0x21 + (self.screen_1_elements[31][0].palette as u16) * 2);
+        let lo = self.read_io(0x20 + (self.screen_1_elements[6][0].palette as u16) * 2);
+        let hi = self.read_io(0x21 + (self.screen_1_elements[6][0].palette as u16) * 2);
         let (c0, c1) = (lo & 0x07, (lo >> 4) & 0x07);
         let (c2, c3) = (hi & 0x07, (hi >> 4) & 0x07);
         println!("Palette raw: {:#?}", (c0, c1, c2, c3));
@@ -484,7 +484,7 @@ impl Display {
             println!("Gradation {} at port {:02X}, from raw_px {}", gradation, addr, i);
         };
         println!("Port 0x1F: {:02X}", self.read_io(0x1F));
-        println!("Palette RGB: {:#?}", self.get_monochrome_palette(self.screen_1_elements[31][0].palette));
+        println!("Palette RGB: {:#?}", self.get_monochrome_palette(self.screen_1_elements[6][0].palette));
         println!("Scroll 1 x: {} y: {}", self.read_io(0x10), self.read_io(0x11));
     }
 
