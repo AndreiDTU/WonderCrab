@@ -331,8 +331,8 @@ impl Display {
         let scr2  = (lcd_ctrl >> 1) & 1 != 0;
         let spr   = (lcd_ctrl >> 2) & 1 != 0;
         let sprwe = (lcd_ctrl >> 3) & 1 != 0;
-        let s2we  = (lcd_ctrl >> 4) & 1 != 0;
-        let s2wc  = (lcd_ctrl >> 5) & 1 != 0;
+        let s2wc  = (lcd_ctrl >> 4) & 1 != 0;
+        let s2we  = (lcd_ctrl >> 5) & 1 != 0;
 
         let bg_color = if self.io_bus.borrow_mut().color_mode() {
             let mut color = (lcd_ctrl >> 8) & 0x0F;
@@ -379,7 +379,7 @@ impl Display {
     }
 
     fn apply_scr2_window(&mut self, s2we: bool, s2wc: bool, x: u8, y: u8) -> Option<(u8, u8, u8)> {
-        /*if s2we {
+        if s2we {
             let (x1, x2) = (self.read_io(0x08), self.read_io(0x0A));
             if x2 < x1 {return None}
             let (y1, y2) = (self.read_io(0x09), self.read_io(0x0B));
@@ -388,7 +388,7 @@ impl Display {
             if !(s2wc == (x1..=x2).contains(&x) && s2wc == (y1..=y2).contains(&y)) {
                 return None;
             }
-        }*/
+        }
         let scroll_x = self.read_io(0x12);
         let scroll_y = self.read_io(0x13);
 
