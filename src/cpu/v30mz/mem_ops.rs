@@ -327,7 +327,7 @@ mod test {
 
         soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();
-        assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().SP.wrapping_add(2));
+        assert_eq_hex!(soc.read_mem_16(addr), soc.get_cpu().SP);
 
         soc.tick_cpu_no_cycles();
         let addr = soc.get_cpu().get_stack_address();

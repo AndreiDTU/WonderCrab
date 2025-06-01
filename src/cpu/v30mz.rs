@@ -160,6 +160,7 @@ impl V30MZ {
             println!("IY {:04X} IX {:04X} BP {:04X} SP {:04X}", self.IY, self.IX, self.BP, self.SP);
             println!("BW {:04X} DW {:04X} CW {:04X} AW {:04X}", self.BW, self.DW, self.CW, self.AW);
             println!("PC {:04X} PS {:04X} PSW: {:04X}", self.PC, self.PS, self.PSW.bits());
+            println!("DS0: {:04X} DS1: {:04X} SS {:04X} PS {:04X}", self.DS0, self.DS1, self.SS, self.PS);
             println!();
         }
 
@@ -307,8 +308,8 @@ impl V30MZ {
             0x73 => self.branch(!self.PSW.contains(CpuStatus::CARRY)),
             0x74 => self.branch(self.PSW.contains(CpuStatus::ZERO)),
             0x75 => self.branch(!self.PSW.contains(CpuStatus::ZERO)),
-            0x76 => self.branch(self.PSW.contains(CpuStatus::ZERO) || self.PSW.contains(CpuStatus::ZERO)),
-            0x77 => self.branch(!(self.PSW.contains(CpuStatus::ZERO) || self.PSW.contains(CpuStatus::ZERO))),
+            0x76 => self.branch(self.PSW.contains(CpuStatus::ZERO) || self.PSW.contains(CpuStatus::CARRY)),
+            0x77 => self.branch(!(self.PSW.contains(CpuStatus::ZERO) || self.PSW.contains(CpuStatus::CARRY))),
             0x78 => self.branch(self.PSW.contains(CpuStatus::SIGN)),
             0x79 => self.branch(!self.PSW.contains(CpuStatus::SIGN)),
             0x7A => self.branch(self.PSW.contains(CpuStatus::PARITY)),
