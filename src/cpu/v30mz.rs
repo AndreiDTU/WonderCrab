@@ -133,25 +133,18 @@ impl V30MZ {
         }
     }
 
-    pub fn tick(&mut self) -> usize {
+    pub fn tick(&mut self) {
         // println!("Tick: halt={}, cycles={}", self.halt, self.cycles);
         self.PSW = self.PSW.union(CpuStatus::from_bits_truncate(0xF002));
         self.PSW.remove(CpuStatus::FIXED_OFF_1);
         self.PSW.remove(CpuStatus::FIXED_OFF_2);
         if self.cycles == 0 {
-            if !self.rep && !self.no_interrupt {if self.poll_interrupts() {return 1}};
-            if !self.halt {
-                self.execute();
-                return self.cycles as usize;
-            } else {
-                return 256;
-            };
+            if !self.rep && !self.no_interrupt {if self.poll_interrupts() {return;}};
+            if !self.halt {self.execute();}
         } else {
             self.cycles -= 1;
             if self.cycles == 0 {self.commit_writes()}
         }
-
-        0
     }
 
     pub fn execute(&mut self) {

@@ -23,8 +23,9 @@ pub struct Display {
     screen_1_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
     screen_2_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
 
-    sprites: [SpriteElement; 128],
+    sprite_table: [SpriteElement; 128],
     sprite_tiles: Box<[[[u8; 8]; 8]; 128]>,
+    sprite_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
     sprite_counter: u8, finished_sprites: bool,
 
     pub lcd: Box<[(u8, u8, u8); 224 * 144]>,
@@ -62,10 +63,14 @@ impl Display {
 
             format,
             screen_1_base: 0, screen_2_base: 0, sprite_base: 0,
+            
             screen_1_elements: [[ScreenElement::dummy(); 32]; 32], screen_2_elements: [[ScreenElement::dummy(); 32]; 32],
-            screen_1_tiles: Box::new([[[[0; 8]; 8]; 32]; 32]), screen_2_tiles: Box::new([[[[0; 8]; 8]; 32]; 32]),
-            screen_1_pixels: Box::new([[None; 256]; 256]), screen_2_pixels: Box::new([[None; 256]; 256]),
-            sprites: [SpriteElement::dummy(); 128], sprite_tiles: Box::new([[[0; 8]; 8]; 128]), sprite_counter: 0, finished_sprites: false,
+            screen_1_tiles:    Box::new([[[[0; 8]; 8]; 32]; 32]),  screen_2_tiles:    Box::new([[[[0; 8]; 8]; 32]; 32]),
+            screen_1_pixels:   Box::new([[None; 256]; 256]),       screen_2_pixels:   Box::new([[None; 256]; 256]),
+
+            sprite_table: [SpriteElement::dummy(); 128], sprite_tiles: Box::new([[[0; 8]; 8]; 128]), sprite_pixels: Box::new([[None; 256]; 256]),
+            sprite_counter: 0, finished_sprites: false,
+            
             lcd: Box::new([(0, 0, 0); 224 * 144]),
         }
     }
@@ -75,13 +80,6 @@ impl Display {
 
         let (x, y) = (self.cycle as usize, self.scanline as usize);
 
-        // if y > 140 {println!("(x,y): {} {}", x, y)}
-
-        if self.cycle % 2 == 1 && self.sprite_counter > 0 {
-            self.sprites[self.cycle as usize / 2] = self.read_sprite(self.sprite_base + self.cycle as u16 * 4);
-            self.sprite_counter -= 1;
-        }
-
         match self.cycle {
             // Find screen 1's tile and element data
             0 => {
@@ -89,7 +87,6 @@ impl Display {
                     self.get_screen_1_base();
                     self.get_sprite_base();
                     self.get_sprite_counter();
-                    // println!("Screen 1 base: {:04X}", self.read_mem_16(self.screen_1_base.into()));
                 }
                 self.finished_sprites = false;
 
@@ -122,6 +119,7 @@ impl Display {
                 }
             }
 
+            /*
             // Find sprite data
             158 => self.fetch_sprite_tile(1),
             160 => self.fetch_sprite_tile(2),
@@ -155,6 +153,7 @@ impl Display {
             234 => self.fetch_sprite_tile(30),
             238 => self.fetch_sprite_tile(31),
             240 => self.fetch_sprite_tile(32),
+            */
 
             225 => {
                 self.io_bus.borrow_mut().hblank();
@@ -176,8 +175,23 @@ impl Display {
             self.overlay_pixels(self.cycle, self.scanline - 1);
         }
 
-        if self.scanline == 144 && self.cycle == 225 {
-            self.io_bus.borrow_mut().vblank();
+        if self.scanline == 144 {
+            if self.cycle == 0 {
+                self.sprite_table = [SpriteElement::dummy(); 128];
+                self.sprite_tiles = Box::new([[[0; 8]; 8]; 128]);
+            }
+            if self.sprite_counter > 0 && self.cycle % 2 == 0 {
+                let sprite_start = self.read_io(0x05) & 0x7F;
+                let sprite_idx = (self.cycle / 2).wrapping_add(sprite_start) & 0x7F;
+                let sprite_addr = self.sprite_base.wrapping_add(sprite_idx as u16 * 4);
+                let sprite = self.read_sprite(sprite_addr);
+                self.sprite_table[sprite_idx as usize] = sprite;
+                self.sprite_tiles[sprite_idx as usize] = self.read_tile(sprite.tile_idx, self.format);
+                self.sprite_counter -= 1;
+            }
+            if self.cycle == 255 {
+                self.io_bus.borrow_mut().vblank();
+            }
         }
 
         if self.scanline == 255 {
@@ -200,7 +214,7 @@ impl Display {
     }
 
     fn get_sprite_base(&mut self) {
-        self.sprite_base = (self.read_io(0x04) as u16) << 9;
+        self.sprite_base = ((self.read_io(0x04) & 0x3F) as u16) << 9;
         if !self.io_bus.borrow_mut().color_mode() {self.sprite_base &= 0x3E00}
     }
 
@@ -223,7 +237,7 @@ impl Display {
                 }
                 PaletteFormat::PLANAR_4BPP => {
                     let base = 0x4000 + (index as u32) * 32;
-                    let data = self.read_mem_32(base + (row as u32 * 2));
+                    let data = self.read_mem_32(base + (row as u32 * 4));
                     let [plane0, plane1] = data.0.to_le_bytes();
                     let [plane2, plane3] = data.1.to_le_bytes();
                     std::array::from_fn(|col| {
@@ -277,25 +291,30 @@ impl Display {
         let pr = word & (1 << 13) != 0;
         let ct = word & (1 << 12) != 0;
         let palette = ((word >> 9) & 0x07) as u8;
-        let [x, y] = coords.to_le_bytes();
+        let tile_idx = word & 0x1FF;
+        let [y, x] = coords.to_le_bytes();
 
-        SpriteElement::new(vm, hm, pr, ct, palette, word & 0x1F, x, y)
+        SpriteElement::new(vm, hm, pr, ct, palette, tile_idx, x, y)
     }
 
+    /*
     fn fetch_sprite_tile(&mut self, index: u8) {
         if self.finished_sprites {return}
 
-        if let Some(sprite) = self.sprites
-            .iter()
-            .filter(|s| {
-                (s.y..s.y+8).contains(&self.scanline)
-            }).collect::<Vec<&SpriteElement>>()
-            .get(128 - (index as usize)) {
-            self.sprite_tiles[128 - index as usize] = self.read_tile(sprite.tile_idx, self.format);
+        let filtered_indices: Vec<usize> = self.sprite_table
+            .iter().enumerate()
+            .filter(|(_, s)| {
+                (s.y..s.y.wrapping_add(8)).contains(&self.scanline)
+            }).map(|(i, _)| {i}).rev().collect();
+
+        if let Some(sprite_idx) = filtered_indices.get(index as usize) {
+            let sprite = self.sprite_table[*sprite_idx];
+            self.sprite_tiles[*sprite_idx] = self.read_tile(sprite.tile_idx, self.format)
         } else {
             self.finished_sprites = true;
         }
     }
+    */
 
     fn overlay_pixels(&mut self, x: u8, y: u8) {
         let (lo, hi) = self.io_bus.borrow_mut().read_io_16(0x00);
@@ -343,13 +362,64 @@ impl Display {
 
         if scr2 {
             self.screen_2_pixels[y as usize][x as usize] = self.apply_scr2_window(s2we, s2wc, x as u8, y as u8);
-            // if true || (self.screen_2_pixels[y][x] != None && self.screen_2_pixels[y][x] != Some((0, 0, 0))) {println!("screen_2_pixels[{y}][{x}] set to {:?}", self.screen_2_pixels[y][x]);}
         } else {
             self.screen_2_pixels[y as usize][x as usize] = None;
         }
 
-        self.lcd[x as usize + y as usize * 224] = 
-            if let Some(scr2_px) = self.screen_2_pixels[y as usize][x as usize] {scr2_px}
+        self.sprite_pixels[y as usize][x as usize] = None;
+        if spr {
+            let filtered_indices: Vec<usize> = match (scr2, sprwe) {
+                (true, true) => {
+                    let (x1, x2) = (self.read_io(0x0C), self.read_io(0x0E));
+                    if x2 < x1 {Vec::new()} else {
+                        let (y1, y2) = (self.read_io(0x0D), self.read_io(0x0F));
+                        if y2 < y1 {Vec::new()} else {
+                            self.sprite_table.iter().enumerate()
+                                .filter(|(_, s)| {s.ct == (x1..=x2).contains(&x) && s.ct == (y1..=y2).contains(&y)})
+                                .filter(|(_, s)| {s.pr || self.screen_2_pixels[y as usize][x as usize].is_none()})
+                                .map(|(i, _)| {i}).rev().collect()
+                        }
+                    }
+                }
+                (true, false) => {
+                    self.sprite_table.iter().enumerate()
+                        .filter(|(_, s)| {s.pr || self.screen_2_pixels[y as usize][x as usize] == None})
+                        .map(|(i, _)| {i}).rev().collect()
+                }
+                (false, true) => {
+                    let (x1, x2) = (self.read_io(0x0C), self.read_io(0x0E));
+                    if x2 < x1 {Vec::new()} else {
+                        let (y1, y2) = (self.read_io(0x0D), self.read_io(0x0F));
+                        if y2 < y1 {Vec::new()} else {
+                            self.sprite_table.iter().enumerate()
+                                .filter(|(_, s)| {s.ct == (x1..=x2).contains(&x) && s.ct == (y1..=y2).contains(&y)})
+                                .map(|(i, _)| {i}).rev().collect()
+                        }
+                    }
+                }
+                (false, false) => (0..self.sprite_table.len()).rev().collect(),
+            };
+
+            for idx in filtered_indices {
+                let sprite = &self.sprite_table[idx];
+                if  (sprite.x..sprite.x.wrapping_add(8)).contains(&x) && 
+                    (sprite.y..sprite.y.wrapping_add(8)).contains(&y)
+                {
+                    let (dx, dy) = (x - sprite.x, y - sprite.y);
+                    let (dx, dy) = (
+                        if sprite.hm {7 - dx} else {dx},
+                        if sprite.vm {7 - dy} else {dy},
+                    );
+                    let raw_px = self.sprite_tiles[idx][dy as usize][dx as usize];
+                    let palette = sprite.palette;
+                    self.sprite_pixels[y as usize][x as usize] = self.fetch_pixel_color(palette, raw_px);
+                }
+            }
+        }
+
+        self.lcd[x as usize + y as usize * 224] =
+            if let Some(spr_px) = self.sprite_pixels[y as usize][x as usize] {spr_px} 
+            else if let Some(scr2_px) = self.screen_2_pixels[y as usize][x as usize] {scr2_px}
             else if let Some(scr1_px) = self.screen_1_pixels[y as usize][x as usize] {scr1_px}
             else {bg_color}
     }
@@ -437,13 +507,6 @@ impl Display {
         })
     }
 
-    pub fn fetch_map_word(&self, bank_nibble: u8, row: usize, col: usize) -> u16 {
-        let bank  = (bank_nibble & 0x0F) as u32;
-        let base  = bank << 11;
-        let idx   = (row * 32 + col) as u32;
-        self.mem_bus.borrow_mut().read_mem_16(base + idx*2)
-    }
-
     pub fn debug_screen_1(&mut self) {
         let element = self.screen_1_elements[6][0];
         println!("Element: {:#?}", element);
@@ -490,13 +553,12 @@ impl Display {
         println!("Scroll 2 x: {} y: {}", self.read_io(0x12), self.read_io(0x13));
     }
 
-    #[cfg(test)]
-    pub fn decode_2bpp_tile(&mut self, index: u16) -> [[u8; 8]; 8] {
-        self.read_tile(index, PaletteFormat::PLANAR_2BPP)
-    }
-
-    #[cfg(test)]
-    pub fn force_get_monochrome_palette(&mut self, index: u8) -> [(u8, u8, u8); 4] {
-        self.get_monochrome_palette(index)
+    pub fn debug_sprites(&mut self) {
+        let sprite = self.sprite_table[0];
+        println!("Sprite: {:#?}", sprite);
+        println!("Sprite base: {:04X}", self.sprite_base);
+        println!("SPR_AREA: {:02X}", self.read_io(0x04));
+        println!("Sprite tile: {:#?}", self.sprite_tiles[0]);
+        println!("Correct tile: {:#?}", self.read_tile(sprite.tile_idx, self.format));
     }
 }

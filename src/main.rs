@@ -77,7 +77,7 @@ fn main() -> Result<(), String> {
                     Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
                         // for addr in 0x3980..=0x3981 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // for addr in 0x29C0..=0x29CF {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
-                        // soc.get_display().debug_screen_1();
+                        // soc.get_display().debug_sprites();
                         return Ok(());
                     },
                     Event::KeyDown { keycode, .. } => {
@@ -97,6 +97,8 @@ fn main() -> Result<(), String> {
                     _ => {}
                 }
             }
+
+            std::thread::sleep(Duration::from_nanos(12288));
 
             // println!("New frame!");
 

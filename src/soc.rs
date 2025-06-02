@@ -60,22 +60,19 @@ impl SoC {
             }
         }
 
-        let op_cycles = if self.dma.cycles > 0 {
+        if self.dma.cycles > 0 {
             self.dma.tick();
-            1
         } else {
-            self.cpu.tick()
+            self.cpu.tick();
         };
 
         if self.mem_bus.borrow().owner == Owner::CPU {
             return false;
         }
 
-        for _ in 0..op_cycles {
-            self.display.tick();
-        }
+        self.display.tick();
 
-        self.cycles += op_cycles;
+        self.cycles += 1;
 
         if self.cycles >= 40703 {
             self.cycles = 0;
