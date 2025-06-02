@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, time::Duration};
+use std::{collections::HashMap, env, time::{Duration, Instant}};
 
 use bus::mem_bus::MemBusConnection;
 use cartridge::Mapper;
@@ -57,10 +57,14 @@ fn main() -> Result<(), String> {
     key_map.insert(Keycode::Z, Keys::B);
     key_map.insert(Keycode::X, Keys::A);
 
-    // let mut frames = 0;
+    let mut previous = Instant::now();
 
     loop {
         if soc.tick() {
+            let now = Instant::now();
+            let delta = now - previous;
+            previous = now;
+
             let mut frame = Vec::with_capacity(soc.get_lcd().borrow().len() * 3);
             for &(r, g, b) in soc.get_lcd().borrow().iter() {
                 frame.push(r);
@@ -98,11 +102,7 @@ fn main() -> Result<(), String> {
                 }
             }
 
-            std::thread::sleep(Duration::from_nanos(12288));
-
-            // println!("New frame!");
-
-            // frames += 1; if frames == 2 {std::process::exit(0);}
+            if (delta.as_micros() as u64) < 13_250 {std::thread::sleep(Duration::from_micros(13_250 - delta.as_micros() as u64))}
         }
     }
 }
