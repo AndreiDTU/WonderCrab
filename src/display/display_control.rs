@@ -503,7 +503,7 @@ impl Display {
 
         std::array::from_fn(|i| {
             let word = self.read_mem_16(base + i as u32 * 2);
-            ((word & 0x0F) as u8, ((word >> 4) & 0x0F) as u8, ((word >> 8) & 0x0F) as u8)
+            (((word >> 8) & 0x0F) as u8, ((word >> 4) & 0x0F) as u8, (word & 0x0F) as u8)
         })
     }
 

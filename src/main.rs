@@ -3,7 +3,7 @@ use std::{collections::HashMap, env, time::{Duration, Instant}};
 use bus::mem_bus::MemBusConnection;
 use cartridge::Mapper;
 use keypad::Keys;
-use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
+use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
 use soc::SoC;
 
 pub mod soc;
@@ -22,6 +22,12 @@ pub mod cartridge;
 #[allow(non_snake_case)]
 pub mod cpu;
 
+const WINDOW_WIDTH: u32 = 1344;
+const WINDOW_HEIGHT: u32 = 864;
+
+const FRAME_WIDTH: u32 = 224;
+const FRAME_HEIGHT: u32 = 144;
+
 fn main() -> Result<(), String> {
     let args: Vec<_> = env::args().collect();
     let game = if args.len() > 1 {Some(&args[1])} else {None};
@@ -35,35 +41,40 @@ fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let window = video_subsystem
-        .window("WonderSwan", 1792, 1152)
+        .window("WonderSwan", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .build().unwrap();
 
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+    canvas.set_logical_size(FRAME_WIDTH, FRAME_HEIGHT).unwrap();
     let creator = canvas.texture_creator();
-    let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 224, 144).unwrap();
+    let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, FRAME_WIDTH, FRAME_HEIGHT).unwrap();
     let mut event_pump = sdl_context.event_pump()?;
 
     let mut key_map = HashMap::new();
-    key_map.insert(Keycode::W, Keys::Y1);
-    key_map.insert(Keycode::D, Keys::Y2);
-    key_map.insert(Keycode::S, Keys::Y3);
-    key_map.insert(Keycode::A, Keys::Y4);
+    key_map.insert(Keycode::A, Keys::Y1);
+    key_map.insert(Keycode::W, Keys::Y2);
+    key_map.insert(Keycode::D, Keys::Y3);
+    key_map.insert(Keycode::S, Keys::Y4);
     key_map.insert(Keycode::U, Keys::X1);
     key_map.insert(Keycode::K, Keys::X2);
     key_map.insert(Keycode::J, Keys::X3);
     key_map.insert(Keycode::H, Keys::X4);
+    key_map.insert(Keycode::KP_4, Keys::X1);
+    key_map.insert(Keycode::KP_8, Keys::X2);
+    key_map.insert(Keycode::KP_6, Keys::X3);
+    key_map.insert(Keycode::KP_5, Keys::X4);
     key_map.insert(Keycode::Return, Keys::Start);
     key_map.insert(Keycode::Z, Keys::B);
     key_map.insert(Keycode::X, Keys::A);
 
     let mut previous = Instant::now();
+    let mut rotated = false;
+    let mut dst = Rect::new(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
 
     loop {
         if soc.tick() {
-            let now = Instant::now();
-            let delta = now - previous;
-            previous = now;
+            canvas.clear();
 
             let mut frame = Vec::with_capacity(soc.get_lcd().borrow().len() * 3);
             for &(r, g, b) in soc.get_lcd().borrow().iter() {
@@ -72,8 +83,10 @@ fn main() -> Result<(), String> {
                 frame.push(b);
             }
 
-            texture.update(None,&frame, 224*3).unwrap();
-            canvas.copy(&texture, None, None).unwrap();
+            let angle = if rotated {270.0} else {0.0};
+
+            texture.update(None,&frame, FRAME_WIDTH as usize * 3).unwrap();
+            canvas.copy_ex(&texture, None, dst, angle, None, false, false).unwrap();
             canvas.present();
 
             for event in event_pump.poll_iter() {
@@ -86,6 +99,22 @@ fn main() -> Result<(), String> {
                     },
                     Event::KeyDown { keycode, .. } => {
                         if let Some(key) = keycode {
+                            if let Some(Keycode::R) = keycode {
+                                rotated = !rotated;
+                                if rotated {
+                                    canvas.window_mut().set_size(WINDOW_HEIGHT, WINDOW_WIDTH).unwrap();
+                                    canvas.window_mut().set_position(sdl2::video::WindowPos::Centered, sdl2::video::WindowPos::Centered);
+                                    canvas.set_logical_size(FRAME_HEIGHT, FRAME_WIDTH).unwrap();
+                                    dst.set_x(-40);
+                                    dst.set_y(40);
+                                } else {
+                                    canvas.window_mut().set_size(WINDOW_WIDTH, WINDOW_HEIGHT).unwrap();
+                                    canvas.window_mut().set_position(sdl2::video::WindowPos::Centered, sdl2::video::WindowPos::Centered);
+                                    canvas.set_logical_size(FRAME_WIDTH, FRAME_HEIGHT).unwrap();
+                                    dst.set_x(0);
+                                    dst.set_y(0);
+                                }
+                            }
                             if let Some(key) = key_map.get(&key) {
                                 soc.io_bus.borrow_mut().keypad.borrow_mut().set_key(*key, true);
                             }
@@ -101,8 +130,11 @@ fn main() -> Result<(), String> {
                     _ => {}
                 }
             }
+            let now = Instant::now();
+            let delta = now - previous;
+            previous = now;
 
-            if (delta.as_micros() as u64) < 13_250 {std::thread::sleep(Duration::from_micros(13_250 - delta.as_micros() as u64))}
+            if (delta.as_micros() as u64) < 13_250 {std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)))}
         }
     }
 }
