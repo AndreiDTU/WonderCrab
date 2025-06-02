@@ -412,7 +412,9 @@ impl Display {
                     );
                     let raw_px = self.sprite_tiles[idx][dy as usize][dx as usize];
                     let palette = sprite.palette;
-                    self.sprite_pixels[y as usize][x as usize] = self.fetch_pixel_color(palette, raw_px);
+                    if let Some(color) = self.fetch_pixel_color(palette, raw_px) {
+                        self.sprite_pixels[y as usize][x as usize] = Some(color);
+                    }
                 }
             }
         }
