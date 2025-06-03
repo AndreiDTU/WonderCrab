@@ -34,8 +34,8 @@ fn main() -> Result<(), String> {
     let trace = args.get(2) == Some(&"trace".to_string());
 
     let mut soc = if let Some(game) = game {
-        let (color, sram, rom, mapper, rewrittable) = parse_rom(game);
-        SoC::new(color, sram, rom, mapper, rewrittable, trace)
+        let (color, ram_content, rom, mapper, sram) = parse_rom(game);
+        SoC::new(color, ram_content, rom, mapper, sram, trace)
     } else {SoC::test_build()};
 
     let sdl_context = sdl2::init()?;
@@ -95,6 +95,7 @@ fn main() -> Result<(), String> {
                         // for addr in 0x3980..=0x3981 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // for addr in 0x29C0..=0x29CF {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // soc.get_display().debug_sprites();
+                        // soc.io_bus.borrow().debug_eeprom();
                         return Ok(());
                     },
                     Event::KeyDown { keycode, .. } => {
@@ -107,12 +108,14 @@ fn main() -> Result<(), String> {
                                     canvas.set_logical_size(FRAME_HEIGHT, FRAME_WIDTH).unwrap();
                                     dst.set_x(-40);
                                     dst.set_y(40);
+                                    canvas.clear();
                                 } else {
                                     canvas.window_mut().set_size(WINDOW_WIDTH, WINDOW_HEIGHT).unwrap();
                                     canvas.window_mut().set_position(sdl2::video::WindowPos::Centered, sdl2::video::WindowPos::Centered);
                                     canvas.set_logical_size(FRAME_WIDTH, FRAME_HEIGHT).unwrap();
                                     dst.set_x(0);
                                     dst.set_y(0);
+                                    canvas.clear();
                                 }
                             }
                             if let Some(key) = key_map.get(&key) {
@@ -143,15 +146,15 @@ fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool) {
     let rom = std::fs::read(format!("{}.ws", game)).or_else(|_| {std::fs::read(format!("{}.wsc", game))}).unwrap();
     let footer = rom.last_chunk::<16>().unwrap();
     let color = footer[0x7] & 1 != 0;
-    let (ram_size, rewrittable) = match footer[0xB] {
+    let (ram_size, sram) = match footer[0xB] {
         0x00 => (0x0u32, true),
         0x01 | 0x02 => (0x08000, true),
         0x03 => (0x20000, true),
         0x04 => (0x40000, true),
         0x05 => (0x80000, true),
-        0x10 => (0x080, false),
-        0x20 => (0x800, false),
-        0x50 => (0x400, false),
+        0x10 => (0x0400, false),
+        0x20 => (0x4000, false),
+        0x50 => (0x2000, false),
         _ => panic!("Unknown save type!")
     };
     let save = std::fs::read(format!("{}.sav", game)).or_else(|_| {Ok::<_, ()>(vec![0; ram_size as usize])}).unwrap();
@@ -162,7 +165,7 @@ fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool) {
         _ => panic!("Unknown mapper!"),
     };
 
-    (color, save, rom, mapper, rewrittable)
+    (color, save, rom, mapper, sram)
 }
 
 #[macro_export]

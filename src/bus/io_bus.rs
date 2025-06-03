@@ -1,12 +1,18 @@
 use std::{cell::RefCell, rc::Rc};
 
+use eeprom::EEPROM;
+
 use crate::{cartridge::Cartridge, display::PaletteFormat, keypad::Keypad};
+
+mod eeprom;
 
 pub struct IOBus {
     ports: [u8; 0x100],
 
     cartridge: Rc<RefCell<Cartridge>>,
-    pub(in crate) keypad: Rc<RefCell<Keypad>>,
+    pub(crate) keypad: Rc<RefCell<Keypad>>,
+    eeprom: Option<EEPROM>,
+    ieeprom: EEPROM
 }
 
 pub trait IOBusConnection {
@@ -104,6 +110,17 @@ impl IOBusConnection for IOBus {
             0xD4 => self.cartridge.borrow().read_rom_bank_1_l(),
             0xD5 => self.cartridge.borrow().read_rom_bank_1_h(),
 
+            // EEPROM ports
+            0xC4..=0xC7 => if self.eeprom.is_some() {self.ports[port as usize]} else {Self::open_bus()}
+
+            0xC8 => if self.eeprom.is_some() {2} else {Self::open_bus()},
+            0xC9 => Self::open_bus(),
+
+            0xBA | 0xBB => 0,
+
+            0xBE => 0x83,
+            0xBF => 0,
+
             // Default no side-effects
             _ => self.ports[port as usize]
         }
@@ -112,6 +129,8 @@ impl IOBusConnection for IOBus {
     fn write_io(&mut self, addr: u16, byte: u8) {
         let Some(port) = Self::check_open_bus(addr) else {return};
         // println!("{:02X} <- {:02X}", port, byte);
+        // if (0xC4..=0xC9).contains(&addr) {println!("Cart EEPROM operation at {:02X}", port)}
+        // if (0xBA..=0xBF).contains(&addr) {println!("IEEPROM operation at {:02X}", port)}
 
         match port {
             // DISPLAY_CTRL
@@ -193,6 +212,61 @@ impl IOBusConnection for IOBus {
             0xD4 => self.cartridge.borrow_mut().write_rom_bank_1_l(byte),
             0xD5 => self.cartridge.borrow_mut().write_rom_bank_1_h(byte),
 
+            // EEPROM ports
+            0xC4..=0xC7 => if self.eeprom.is_some() {
+                // println!("[{:02X}] <- {:02X}", port, byte);
+                self.ports[port as usize] = byte;
+            }
+
+            0xC8 => if let Some(eeprom) = &mut self.eeprom {
+                self.ports[0xC8] = byte & 0xF0;
+                let operation = byte >> 4;
+                // println!("Cart EEPROM operation: {:04b}", operation);
+                match operation {
+                    0b0001 => {
+                        eeprom.write_comm(u16::from_le_bytes([self.ports[0xC6], self.ports[0xC7]]));
+                        [self.ports[0xC4], self.ports[0xC5]] = eeprom.read_data().to_le_bytes();
+                        // println!("Read data from EEPROM: {:04X}", u16::from_le_bytes([self.ports[0xC4], self.ports[0xC5]]))
+                    }
+                    0b0010 => {
+                        let data = u16::from_le_bytes([self.ports[0xC4], self.ports[0xC5]]);
+                        let comm = u16::from_le_bytes([self.ports[0xC6], self.ports[0xC7]]);
+                        eeprom.write_data(data);
+                        eeprom.write_comm(comm);
+                        // println!("data: {:04X}, comm: {:04X}", data, comm);
+                    }
+                    0b0100 => eeprom.write_comm(u16::from_le_bytes([self.ports[0xC6], self.ports[0xC7]])),
+                    _ => {}
+                }
+            }
+            0xC9 => {},
+
+            0xBE => {
+                self.ports[0xBE] = byte & 0xF0;
+                let operation = byte >> 4;
+                let comm = u16::from_le_bytes([self.ports[0xBC], self.ports[0xBD]]);
+                if operation != 0b0001 {
+                    let address_bits = if self.color_mode() {10} else {6};
+                    if (comm & ((1 << address_bits) - 1)) * 2 >= 0x60 {
+                        return;
+                    }
+                }
+                match operation {
+                    0b0001 => {
+                        self.ieeprom.write_comm(comm);
+                        [self.ports[0xBA], self.ports[0xBB]] = self.ieeprom.read_data().to_le_bytes();
+                    }
+                    0b0010 => {
+                        let data = u16::from_le_bytes([self.ports[0xBA], self.ports[0xBB]]);
+                        self.ieeprom.write_data(data);
+                        self.ieeprom.write_comm(comm);
+                    }
+                    0b0100 => self.ieeprom.write_comm(comm),
+                    _ => {}
+                }
+            },
+            0xBF => {},
+
             // Default no side-effects
             _ => self.ports[port as usize] = byte
         }
@@ -200,8 +274,20 @@ impl IOBusConnection for IOBus {
 }
 
 impl IOBus {
-    pub fn new(cartridge: Rc<RefCell<Cartridge>>, keypad: Rc<RefCell<Keypad>>) -> Self {
-        Self {ports: [0; 0x100], cartridge, keypad}
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>, keypad: Rc<RefCell<Keypad>>, eeprom: Option<Vec<u8>>, color: bool) -> Self {
+        let ieeprom = if color {EEPROM::new(vec![0; 0x800], 10)} else {EEPROM::new(vec![0; 128], 6)};
+        
+        let eeprom = if let Some(contents) = eeprom {
+            let address_bits = match contents.len() {
+                0x400 => 6,
+                0x2000 | 0x4000 => 10,
+                _ => panic!("Unsupported EEPROM size {:X}", contents.len())
+            };
+            Some(EEPROM::new(contents, address_bits))
+        } else {None};
+        let mut bus = Self {ports: [0; 0x100], cartridge, keypad, eeprom, ieeprom};
+        if color {bus.color_setup()};
+        bus
     }
 
     pub fn color_mode(&mut self) -> bool {
@@ -223,7 +309,7 @@ impl IOBus {
 
     pub fn color_setup(&mut self) {
         self.ports[0x60] = 0x80;
-        self.ports[0xA0] = 0x02;
+        self.ports[0xA0] = 0x86;
     }
 
     pub fn open_bus() -> u8 {
@@ -282,5 +368,12 @@ impl IOBus {
         }
 
         return Some(port);
+    }
+
+    pub(crate) fn debug_eeprom(&self) {
+        println!("IEEPROM {:#?}", self.ieeprom.contents);
+        if let Some(eeprom) = &self.eeprom {
+            println!("CART EEPROM: {:#?}", eeprom.contents);
+        }
     }
 }
