@@ -341,25 +341,7 @@ impl Display {
             (color, color, color)   
         };
 
-        if scr1 {
-            let scroll_x = self.read_io(0x10);
-            let scroll_y = self.read_io(0x11);
-
-            let mut pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
-            let element_idx = (pixel.0 / 8, pixel.1 / 8);
-
-            let element = self.screen_1_elements[element_idx.1 as usize][element_idx.0 as usize];
-
-            if element.hm {pixel.0 = 7 - pixel.0};
-            if element.vm {pixel.1 = 7 - pixel.1};
-
-            let raw_px = self.screen_1_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
-
-            self.screen_1_pixels[y as usize][x as usize] = self.fetch_pixel_color(element.palette, raw_px);
-        } else {
-            self.screen_1_pixels[y as usize][x as usize] = None;
-        }
-
+        
         if scr2 {
             self.screen_2_pixels[y as usize][x as usize] = self.apply_scr2_window(s2we, s2wc, x as u8, y as u8);
         } else {
@@ -422,8 +404,29 @@ impl Display {
         self.lcd[x as usize + y as usize * 224] =
             if let Some(spr_px) = self.sprite_pixels[y as usize][x as usize] {spr_px} 
             else if let Some(scr2_px) = self.screen_2_pixels[y as usize][x as usize] {scr2_px}
-            else if let Some(scr1_px) = self.screen_1_pixels[y as usize][x as usize] {scr1_px}
-            else {bg_color}
+            else {
+                self.screen_1_pixels[y as usize][x as usize] = None;
+                if scr1 {
+                    let scroll_x = self.read_io(0x10);
+                    let scroll_y = self.read_io(0x11);
+
+                    let mut pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
+                    let element_idx = (pixel.0 / 8, pixel.1 / 8);
+
+                    let element = self.screen_1_elements[element_idx.1 as usize][element_idx.0 as usize];
+
+                    if element.hm {pixel.0 = 7 - pixel.0};
+                    if element.vm {pixel.1 = 7 - pixel.1};
+
+                    let raw_px = self.screen_1_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
+
+                    self.screen_1_pixels[y as usize][x as usize] = self.fetch_pixel_color(element.palette, raw_px);
+                } else {
+                    self.screen_1_pixels[y as usize][x as usize] = None;
+                }
+
+                if let Some(scr1_px) = self.screen_1_pixels[y as usize][x as usize] {scr1_px} else {bg_color}
+            }
     }
 
     fn apply_scr2_window(&mut self, s2we: bool, s2wc: bool, x: u8, y: u8) -> Option<(u8, u8, u8)> {

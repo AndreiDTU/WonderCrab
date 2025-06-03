@@ -55,9 +55,6 @@ impl Sound {
 
     pub fn tick(&mut self) -> (u16, u16) {
         self.control = SoundControl::from_bits_truncate(self.read_io(0x90));
-        self.control.remove(SoundControl::NOISE);
-        self.control.remove(SoundControl::VOICE);
-        self.control.remove(SoundControl::SWEEP);
         self.sweep();
         self.noise();
         self.load_waveforms();

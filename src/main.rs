@@ -3,8 +3,12 @@ use std::{collections::HashMap, env, time::{Duration, Instant}};
 use bus::mem_bus::MemBusConnection;
 use cartridge::Mapper;
 use keypad::Keys;
+use mimalloc::MiMalloc;
 use sdl2::{audio::{AudioQueue, AudioSpecDesired}, event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
 use soc::SoC;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 pub mod soc;
 pub mod bus;
@@ -55,7 +59,7 @@ fn main() -> Result<(), String> {
     let audio_device: AudioQueue<u8> = audio_subsystem.open_queue(None, &desired_spec)?;
     audio_device.resume();
 
-    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+    let mut canvas = window.into_canvas().build().unwrap();
     canvas.set_logical_size(FRAME_WIDTH, FRAME_HEIGHT).unwrap();
     let creator = canvas.texture_creator();
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, FRAME_WIDTH, FRAME_HEIGHT).unwrap();
@@ -99,7 +103,11 @@ fn main() -> Result<(), String> {
             let angle = if rotated {270.0} else {0.0};
 
             texture.update(None,&frame, FRAME_WIDTH as usize * 3).unwrap();
-            canvas.copy_ex(&texture, None, dst, angle, None, false, false).unwrap();
+            if rotated {
+                canvas.copy_ex(&texture, None, dst, angle, None, false, false).unwrap();
+            } else {
+                canvas.copy(&texture, None, None)?;
+            }
             canvas.present();
 
             for event in event_pump.poll_iter() {
