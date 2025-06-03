@@ -70,6 +70,8 @@ impl IOBusConnection for IOBus {
                 }
             }
 
+            0x91 => (self.ports[0x91] & 0x0F) | 0x09,
+
             // VBLANK is always enabled in INT_ENABLE
             0xB2 => self.ports[0xB2] | (1 << 6),
 
@@ -151,6 +153,8 @@ impl IOBusConnection for IOBus {
 
             // Lowest bit of GDMA_COUNTER is always clear
             0x47 => self.ports[0x47] = byte & 0xFE,
+
+            0x91 => self.ports[0x91] = byte & 0x06,
 
             // Writing to HBLANK and VBLANK timers also sets the counters
             0xA4 => {
@@ -355,6 +359,13 @@ impl IOBus {
                 [self.ports[0xA8], self.ports[0xA9]] = counter.to_le_bytes();
             }
         }
+    }
+
+    // Sound functions
+    pub(crate) fn set_lsfr(&mut self, lsfr: u16) {
+        let bytes = lsfr.to_le_bytes();
+        self.write_io(0x92, bytes[0]);
+        self.write_io(0x93, bytes[1]); 
     }
 
     fn check_open_bus(addr: u16) -> Option<u8> {

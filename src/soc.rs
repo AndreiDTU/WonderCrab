@@ -1,20 +1,20 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA, keypad::Keypad};
+use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA, keypad::Keypad, sound::Sound};
 
 pub struct SoC {
-    // COMPONENTS
     cpu: V30MZ,
     dma: DMA,
+    sound: Sound,
     display: Box<Display>,
 
-    // MEMORY
     mem_bus: Rc<RefCell<MemBus>>,
-
-    // I/O
     pub(super) io_bus: Rc<RefCell<IOBus>>,
 
     cycles: usize,
+
+    pub(super) samples: Vec<(u16, u16)>,
+    sample_acc: f64,
 }
 
 impl MemBusConnection for SoC {
@@ -49,11 +49,12 @@ impl SoC {
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), trace);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let sound = Sound::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus)));
 
         cpu.reset();
 
-        Self {cpu, dma, display, mem_bus, io_bus, cycles: 0}
+        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::with_capacity(320), sample_acc: 0.0}
     }
 
     pub fn tick(&mut self) -> bool {
@@ -71,6 +72,13 @@ impl SoC {
 
         if self.mem_bus.borrow().owner == Owner::CPU {
             return false;
+        }
+
+        let sample = self.sound.tick();
+        self.sample_acc += 325.520833;
+        if self.sample_acc >= 41666.6667 {
+            self.sample_acc -= 41666.6667;
+            self.samples.push(sample);
         }
 
         self.display.tick();
@@ -99,6 +107,7 @@ impl SoC {
         let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), false);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let sound = Sound::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
 
         for i in 0..=0x3FFF {
@@ -107,7 +116,7 @@ impl SoC {
         io_bus.borrow_mut().write_io(0x00, 0xFF);
         io_bus.borrow_mut().write_io(0x1F, 0xF8);
 
-        Self {cpu, dma, mem_bus, io_bus, display: Box::new(display), cycles: 0}
+        Self {cpu, dma, sound, mem_bus, io_bus, display: Box::new(display), cycles: 0, samples: Vec::with_capacity(318), sample_acc: 0.0}
     }
 }
 

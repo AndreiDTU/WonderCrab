@@ -3,13 +3,14 @@ use std::{collections::HashMap, env, time::{Duration, Instant}};
 use bus::mem_bus::MemBusConnection;
 use cartridge::Mapper;
 use keypad::Keys;
-use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
+use sdl2::{audio::{AudioQueue, AudioSpecDesired}, event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
 use soc::SoC;
 
 pub mod soc;
 pub mod bus;
 pub mod dma;
 pub mod keypad;
+pub mod sound;
 
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
@@ -45,6 +46,15 @@ fn main() -> Result<(), String> {
         .position_centered()
         .build().unwrap();
 
+    let audio_subsystem = sdl_context.audio()?;
+    let desired_spec = AudioSpecDesired {
+        freq: Some(24000),
+        channels: Some(1),
+        samples: Some(1024),
+    };
+    let audio_device: AudioQueue<u8> = audio_subsystem.open_queue(None, &desired_spec)?;
+    audio_device.resume();
+
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
     canvas.set_logical_size(FRAME_WIDTH, FRAME_HEIGHT).unwrap();
     let creator = canvas.texture_creator();
@@ -75,6 +85,9 @@ fn main() -> Result<(), String> {
     loop {
         if soc.tick() {
             canvas.clear();
+
+            let samples: Vec<u8> = soc.samples.drain(..).map(|(s, _)| s as u8).collect();
+            audio_device.queue_audio(&samples).unwrap();
 
             let mut frame = Vec::with_capacity(soc.get_lcd().borrow().len() * 3);
             for &(r, g, b) in soc.get_lcd().borrow().iter() {
@@ -137,7 +150,7 @@ fn main() -> Result<(), String> {
             let delta = now - previous;
             previous = now;
 
-            if (delta.as_micros() as u64) < 13_250 {std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)))}
+            std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)))
         }
     }
 }
