@@ -32,6 +32,8 @@ pub struct Display {
 
     scanline: u8,
     cycle: u8,
+
+    color_map: [[Option<(u8, u8, u8)>; 16]; 16],
 }
 
 impl MemBusConnection for Display {
@@ -72,6 +74,7 @@ impl Display {
             sprite_counter: 0, finished_sprites: false,
             
             lcd,
+            color_map: [[None; 16]; 16]
         }
     }
 
@@ -88,6 +91,7 @@ impl Display {
                     self.get_sprite_base();
                     self.get_sprite_counter();
                 }
+                self.generate_color_map();
                 self.finished_sprites = false;
 
                 let row = y / 8;
@@ -394,7 +398,7 @@ impl Display {
                     );
                     let raw_px = self.sprite_tiles[idx][dy as usize][dx as usize];
                     let palette = sprite.palette;
-                    if let Some(color) = self.fetch_pixel_color(palette, raw_px) {
+                    if let Some(color) = self.color_map[palette as usize][raw_px as usize] {
                         self.sprite_pixels[y as usize][x as usize] = Some(color);
                     }
                 }
@@ -420,7 +424,7 @@ impl Display {
 
                     let raw_px = self.screen_1_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
 
-                    self.screen_1_pixels[y as usize][x as usize] = self.fetch_pixel_color(element.palette, raw_px);
+                    self.screen_1_pixels[y as usize][x as usize] = self.color_map[element.palette as usize][raw_px as usize];
                 } else {
                     self.screen_1_pixels[y as usize][x as usize] = None;
                 }
@@ -459,36 +463,26 @@ impl Display {
 
         let raw_px = self.screen_2_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
 
-        self.fetch_pixel_color(element.palette, raw_px)
+        self.color_map[element.palette as usize][raw_px as usize]
     }
 
-    fn fetch_pixel_color(&mut self, palette: u8, raw_px: u8) -> Option<(u8, u8, u8)> {
-        // if palette != 0 {println!("{}", palette)}
-        match self.format {
-            PaletteFormat::PLANAR_2BPP => {
-                if raw_px == 0 && (4..=7).contains(&palette) {
-                    return None
+    fn generate_color_map(&mut self) {
+        self.color_map = std::array::from_fn(|palette| {
+            std::array::from_fn(|raw_px| {
+                match self.format {
+                    PaletteFormat::PLANAR_2BPP => {
+                        if (palette >= 4 && raw_px == 0) || (raw_px >= 4 && !self.io_bus.borrow_mut().color_mode()) {
+                            None
+                        } else {
+                            Some(self.get_monochrome_palette(palette as u8)[raw_px])
+                        }
+                    }
+                    PaletteFormat::PLANAR_4BPP | PaletteFormat::PACKED_4BPP => {
+                        if raw_px == 0 {None} else {Some(self.get_color_palette(palette as u8)[raw_px])}
+                    }
                 }
-
-                let color = if self.io_bus.borrow_mut().color_mode() {
-                    let (r, g, b) = self.get_color_palette(palette)[raw_px as usize];
-                    (r * 17, g * 17, b * 17)
-                } else {
-                    self.get_monochrome_palette(palette)[raw_px as usize]
-                };
-
-                Some(color)
-            },
-            PaletteFormat::PLANAR_4BPP | PaletteFormat::PACKED_4BPP => {
-                if raw_px == 0 {
-                    return None;
-                }
-                
-                let (r, g, b) = self.get_color_palette(palette)[raw_px as usize];
-
-                Some((r * 17, g * 17, b * 17))
-            },
-        }
+            })
+        });
     }
 
     fn get_monochrome_palette(&mut self, palette: u8) -> [(u8, u8, u8); 4] {
@@ -509,8 +503,8 @@ impl Display {
         })
     }
 
-    fn get_color_palette(&mut self, index: u8) -> [(u8, u8, u8); 16] {
-        let base = 0x0FE00 + (index as u32) * 32;
+    fn get_color_palette(&mut self, palette: u8) -> [(u8, u8, u8); 16] {
+        let base = 0x0FE00 + (palette as u32) * 32;
 
         std::array::from_fn(|i| {
             let word = self.read_mem_16(base + i as u32 * 2);

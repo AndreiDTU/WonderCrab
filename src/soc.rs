@@ -14,7 +14,7 @@ pub struct SoC {
     cycles: usize,
 
     pub(super) samples: Vec<(u16, u16)>,
-    sample_acc: f64,
+    sample_acc: u64,
 
     lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>
 }
@@ -57,7 +57,7 @@ impl SoC {
 
         cpu.reset();
 
-        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::with_capacity(320), sample_acc: 0.0, lcd}
+        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::with_capacity(320), sample_acc: 0, lcd}
     }
 
     pub fn tick(&mut self) -> bool {
@@ -78,9 +78,9 @@ impl SoC {
         }
 
         let sample = self.sound.tick();
-        self.sample_acc += 325.520833;
-        if self.sample_acc >= 41666.6667 {
-            self.sample_acc -= 41666.6667;
+        self.sample_acc += 24_000;
+        if self.sample_acc >= 3_072_000 {
+            self.sample_acc -= 3_072_000;
             self.samples.push(sample);
         }
 
@@ -120,7 +120,7 @@ impl SoC {
         io_bus.borrow_mut().write_io(0x00, 0xFF);
         io_bus.borrow_mut().write_io(0x1F, 0xF8);
 
-        Self {cpu, dma, sound, mem_bus, io_bus, display, cycles: 0, samples: Vec::with_capacity(318), sample_acc: 0.0, lcd}
+        Self {cpu, dma, sound, mem_bus, io_bus, display, cycles: 0, samples: Vec::with_capacity(318), sample_acc: 0, lcd}
     }
 }
 
