@@ -9,6 +9,7 @@ pub struct Display {
     io_bus: Rc<RefCell<IOBus>>,
 
     format: PaletteFormat,
+    color: bool,
 
     screen_1_base: u16,
     screen_2_base: u16,
@@ -17,14 +18,13 @@ pub struct Display {
     screen_1_elements: [[ScreenElement; 32]; 32],
     screen_2_elements: [[ScreenElement; 32]; 32],
 
-    screen_1_tiles: Box<[[[[u8; 8]; 8]; 32]; 32]>,
-    screen_2_tiles: Box<[[[[u8; 8]; 8]; 32]; 32]>,
+    screen_1_tiles: [[[[u8; 8]; 8]; 32]; 32],
+    screen_2_tiles: [[[[u8; 8]; 8]; 32]; 32],
 
-    screen_1_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
     screen_2_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
 
     sprite_table: [SpriteElement; 128],
-    sprite_tiles: Box<[[[u8; 8]; 8]; 128]>,
+    sprite_tiles: [[[u8; 8]; 8]; 128],
     sprite_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
     sprite_counter: u8, finished_sprites: bool,
 
@@ -58,19 +58,21 @@ impl IOBusConnection for Display {
 
 impl Display {
     pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>, lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>) -> Self {
-        let format = io_bus.borrow_mut().pallete_format();
+        let format = io_bus.borrow_mut().palette_format();
+        let color = io_bus.borrow_mut().color_mode();
         Self {
             mem_bus, io_bus,
             scanline: 0, cycle: 0,
 
             format,
+            color,
             screen_1_base: 0, screen_2_base: 0, sprite_base: 0,
             
             screen_1_elements: [[ScreenElement::dummy(); 32]; 32], screen_2_elements: [[ScreenElement::dummy(); 32]; 32],
-            screen_1_tiles:    Box::new([[[[0; 8]; 8]; 32]; 32]),  screen_2_tiles:    Box::new([[[[0; 8]; 8]; 32]; 32]),
-            screen_1_pixels:   Box::new([[None; 256]; 256]),       screen_2_pixels:   Box::new([[None; 256]; 256]),
+            screen_1_tiles: [[[[0; 8]; 8]; 32]; 32],  screen_2_tiles: [[[[0; 8]; 8]; 32]; 32],
+            screen_2_pixels: Box::new([[None; 256]; 256]),
 
-            sprite_table: [SpriteElement::dummy(); 128], sprite_tiles: Box::new([[[0; 8]; 8]; 128]), sprite_pixels: Box::new([[None; 256]; 256]),
+            sprite_table: [SpriteElement::dummy(); 128], sprite_tiles: [[[0; 8]; 8]; 128], sprite_pixels: Box::new([[None; 256]; 256]),
             sprite_counter: 0, finished_sprites: false,
             
             lcd,
@@ -79,7 +81,8 @@ impl Display {
     }
 
     pub fn tick(&mut self) {
-        self.format = self.io_bus.borrow_mut().pallete_format();
+        self.color = self.io_bus.borrow_mut().color_mode();
+        self.format = self.io_bus.borrow_mut().palette_format();
 
         let (x, y) = (self.cycle as usize, self.scanline as usize);
 
@@ -94,12 +97,12 @@ impl Display {
                 self.generate_color_map();
                 self.finished_sprites = false;
 
-                let row = y / 8;
+                let row = y >> 3;
                 let address = self.screen_1_base | ((row as u16) << 6);
                 self.screen_1_elements[row][0] = self.read_screen_element(address);
             }
             1..=63 => {
-                let (row, col) = (y / 8, x / 2);
+                let (row, col) = (y >> 3, x / 2);
                 if self.cycle % 2 == 1 {
                     self.screen_1_tiles[row][col] = self.read_tile(self.screen_1_elements[row][col].tile_idx, self.format);
                 } else {
@@ -111,10 +114,10 @@ impl Display {
             // Find screen 2's tile and element data
             65 => {
                 if self.scanline == 0 {self.get_screen_2_base()};
-                self.screen_2_elements[y / 8][0] = self.read_screen_element(self.screen_2_base);
+                self.screen_2_elements[y >> 3][0] = self.read_screen_element(self.screen_2_base);
             }
             66..=129 => {
-                let (row, col) = (y / 8, (x - 66) / 2);
+                let (row, col) = (y >> 3, (x - 66) / 2);
                 if self.cycle % 2 == 1 {
                     self.screen_2_tiles[row][col] = self.read_tile(self.screen_2_elements[row][col].tile_idx, self.format);
                 } else {
@@ -182,7 +185,7 @@ impl Display {
         if self.scanline == 144 {
             if self.cycle == 0 {
                 self.sprite_table = [SpriteElement::dummy(); 128];
-                self.sprite_tiles = Box::new([[[0; 8]; 8]; 128]);
+                self.sprite_tiles = [[[0; 8]; 8]; 128];
             }
             if self.sprite_counter > 0 && self.cycle % 2 == 0 {
                 let sprite_start = self.read_io(0x05) & 0x7F;
@@ -208,18 +211,18 @@ impl Display {
 
     fn get_screen_1_base(&mut self) {
         self.screen_1_base = ((self.io_bus.borrow_mut().read_io(0x07) & 0x0F) as u16) << 11;
-        if !self.io_bus.borrow_mut().color_mode() {self.screen_1_base &= 0x3800}
+        if !self.color {self.screen_1_base &= 0x3800}
         // println!("Screen 1 base: {:014X}", self.screen_1_base);
     }
 
     fn get_screen_2_base(&mut self) {
         self.screen_2_base = (((self.io_bus.borrow_mut().read_io(0x07) >> 4) & 0x0F) as u16) << 11;
-        if !self.io_bus.borrow_mut().color_mode() {self.screen_2_base &= 0x3800}
+        if !self.color {self.screen_2_base &= 0x3800}
     }
 
     fn get_sprite_base(&mut self) {
         self.sprite_base = ((self.read_io(0x04) & 0x3F) as u16) << 9;
-        if !self.io_bus.borrow_mut().color_mode() {self.sprite_base &= 0x3E00}
+        if !self.color {self.sprite_base &= 0x3E00}
     }
 
     fn get_sprite_counter(&mut self) {
@@ -271,7 +274,7 @@ impl Display {
 
     fn read_screen_element(&mut self, addr: u16) -> ScreenElement {
         let addr = addr as u32;
-        let color = self.io_bus.borrow_mut().color_mode();
+        let color = self.color;
 
         let word = self.read_mem_16(addr);
 
@@ -330,21 +333,6 @@ impl Display {
         let sprwe = (lcd_ctrl >> 3) & 1 != 0;
         let s2wc  = (lcd_ctrl >> 4) & 1 != 0;
         let s2we  = (lcd_ctrl >> 5) & 1 != 0;
-
-        let bg_color = if self.io_bus.borrow_mut().color_mode() {
-            let mut color = (lcd_ctrl >> 8) & 0x0F;
-            if self.format == PaletteFormat::PLANAR_2BPP {color &= 0x3}
-            let (r, g, b) = self.get_color_palette((lcd_ctrl >> 12) as u8)[color as usize];
-            (r * 17, g * 17, b * 17)
-        } else {
-            let index = ((lcd_ctrl >> 8) & 0x7) as u8;
-            let (port, shift) = (index / 2, index % 2);
-            let color_raw = (self.read_io(0x1C + port as u16) >> shift * 4) & 0x0F;
-            let color = 0xFF - 0x11 * color_raw;
-
-            (color, color, color)   
-        };
-
         
         if scr2 {
             self.screen_2_pixels[y as usize][x as usize] = self.apply_scr2_window(s2we, s2wc, x as u8, y as u8);
@@ -409,27 +397,40 @@ impl Display {
             if let Some(spr_px) = self.sprite_pixels[y as usize][x as usize] {spr_px} 
             else if let Some(scr2_px) = self.screen_2_pixels[y as usize][x as usize] {scr2_px}
             else {
-                self.screen_1_pixels[y as usize][x as usize] = None;
-                if scr1 {
-                    let scroll_x = self.read_io(0x10);
-                    let scroll_y = self.read_io(0x11);
+                if let Some(scr1_px) = 
+                    if scr1 {
+                        let scroll_x = self.read_io(0x10);
+                        let scroll_y = self.read_io(0x11);
 
-                    let mut pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
-                    let element_idx = (pixel.0 / 8, pixel.1 / 8);
+                        let mut pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
+                        let element_idx = (pixel.0 >> 3, pixel.1 >> 3);
 
-                    let element = self.screen_1_elements[element_idx.1 as usize][element_idx.0 as usize];
+                        let element = self.screen_1_elements[element_idx.1 as usize][element_idx.0 as usize];
 
-                    if element.hm {pixel.0 = 7 - pixel.0};
-                    if element.vm {pixel.1 = 7 - pixel.1};
+                        if element.hm {pixel.0 = 7 - pixel.0};
+                        if element.vm {pixel.1 = 7 - pixel.1};
 
-                    let raw_px = self.screen_1_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
+                        let raw_px = self.screen_1_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize & 7][pixel.0 as usize & 7];
 
-                    self.screen_1_pixels[y as usize][x as usize] = self.color_map[element.palette as usize][raw_px as usize];
-                } else {
-                    self.screen_1_pixels[y as usize][x as usize] = None;
+                        self.color_map[element.palette as usize][raw_px as usize]
+                    } else {
+                        None
+                    }
+                {scr1_px} else {
+                    if self.color {
+                        let mut color = (lcd_ctrl >> 8) & 0x0F;
+                        if self.format == PaletteFormat::PLANAR_2BPP {color &= 0x3}
+                        let (r, g, b) = self.get_color_palette((lcd_ctrl >> 12) as u8)[color as usize];
+                        (r * 17, g * 17, b * 17)
+                    } else {
+                        let index = ((lcd_ctrl >> 8) & 0x7) as u8;
+                        let (port, shift) = (index / 2, index % 2);
+                        let color_raw = (self.read_io(0x1C + port as u16) >> shift * 4) & 0x0F;
+                        let color = 0xFF - 0x11 * color_raw;
+
+                        (color, color, color)   
+                    }
                 }
-
-                if let Some(scr1_px) = self.screen_1_pixels[y as usize][x as usize] {scr1_px} else {bg_color}
             };
 
             let dot = (x as usize + y as usize * 224) * 3;
@@ -454,14 +455,14 @@ impl Display {
         let scroll_y = self.read_io(0x13);
 
         let mut pixel = (x.wrapping_add(scroll_x), y.wrapping_add(scroll_y));
-        let element_idx = (pixel.0 / 8, pixel.1 / 8);
+        let element_idx = (pixel.0 >> 3, pixel.1 >> 3);
 
         let element = self.screen_2_elements[element_idx.1 as usize][element_idx.0 as usize];
 
         if element.hm {pixel.0 = 7 - pixel.0};
         if element.vm {pixel.1 = 7 - pixel.1};
 
-        let raw_px = self.screen_2_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize % 8][pixel.0 as usize % 8];
+        let raw_px = self.screen_2_tiles[element_idx.1 as usize][element_idx.0 as usize][pixel.1 as usize & 7][pixel.0 as usize & 7];
 
         self.color_map[element.palette as usize][raw_px as usize]
     }
@@ -471,7 +472,7 @@ impl Display {
             std::array::from_fn(|raw_px| {
                 match self.format {
                     PaletteFormat::PLANAR_2BPP => {
-                        if (palette >= 4 && raw_px == 0) || (raw_px >= 4 && !self.io_bus.borrow_mut().color_mode()) {
+                        if raw_px >= 4 || (raw_px == 0 && palette >= 4) {
                             None
                         } else {
                             Some(self.get_monochrome_palette(palette as u8)[raw_px])
@@ -508,7 +509,8 @@ impl Display {
 
         std::array::from_fn(|i| {
             let word = self.read_mem_16(base + i as u32 * 2);
-            (((word >> 8) & 0x0F) as u8, ((word >> 4) & 0x0F) as u8, (word & 0x0F) as u8)
+            let (r, g, b) = (((word >> 8) & 0x0F) as u8, ((word >> 4) & 0x0F) as u8, (word & 0x0F) as u8);
+            (r * 17, g * 17, b * 17)
         })
     }
 

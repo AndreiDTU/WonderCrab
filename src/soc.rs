@@ -6,7 +6,7 @@ pub struct SoC {
     cpu: V30MZ,
     dma: DMA,
     sound: Sound,
-    display: Box<Display>,
+    display: Display,
 
     mem_bus: Rc<RefCell<MemBus>>,
     pub(super) io_bus: Rc<RefCell<IOBus>>,
@@ -53,7 +53,7 @@ impl SoC {
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let sound = Sound::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let lcd = Rc::new(RefCell::new([0; 3 * 224 * 144]));
-        let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), Rc::clone(&lcd)));
+        let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), Rc::clone(&lcd));
 
         cpu.reset();
 
@@ -112,7 +112,7 @@ impl SoC {
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let sound = Sound::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let lcd = Rc::new(RefCell::new([0; 3 * 224 * 144]));
-        let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), Rc::clone(&lcd)));
+        let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), Rc::clone(&lcd));
 
         for i in 0..=0x3FFF {
             mem_bus.borrow_mut().write_mem(i, 0x01);

@@ -298,7 +298,7 @@ impl IOBus {
         self.ports[0x60] >> 7 != 0
     }
 
-    pub fn pallete_format(&mut self) -> PaletteFormat {
+    pub fn palette_format(&mut self) -> PaletteFormat {
         if !self.color_mode() {
             PaletteFormat::PLANAR_2BPP
         } else {
