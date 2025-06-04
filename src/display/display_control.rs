@@ -28,7 +28,7 @@ pub struct Display {
     sprite_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
     sprite_counter: u8, finished_sprites: bool,
 
-    pub lcd: Box<[(u8, u8, u8); 224 * 144]>,
+    lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>,
 
     scanline: u8,
     cycle: u8,
@@ -55,7 +55,7 @@ impl IOBusConnection for Display {
 }
 
 impl Display {
-    pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
+    pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>, lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>) -> Self {
         let format = io_bus.borrow_mut().pallete_format();
         Self {
             mem_bus, io_bus,
@@ -71,7 +71,7 @@ impl Display {
             sprite_table: [SpriteElement::dummy(); 128], sprite_tiles: Box::new([[[0; 8]; 8]; 128]), sprite_pixels: Box::new([[None; 256]; 256]),
             sprite_counter: 0, finished_sprites: false,
             
-            lcd: Box::new([(0, 0, 0); 224 * 144]),
+            lcd,
         }
     }
 
@@ -401,7 +401,7 @@ impl Display {
             }
         }
 
-        self.lcd[x as usize + y as usize * 224] =
+        let pixel =
             if let Some(spr_px) = self.sprite_pixels[y as usize][x as usize] {spr_px} 
             else if let Some(scr2_px) = self.screen_2_pixels[y as usize][x as usize] {scr2_px}
             else {
@@ -426,7 +426,13 @@ impl Display {
                 }
 
                 if let Some(scr1_px) = self.screen_1_pixels[y as usize][x as usize] {scr1_px} else {bg_color}
-            }
+            };
+
+            let dot = (x as usize + y as usize * 224) * 3;
+
+            self.lcd.borrow_mut()[dot] = pixel.0;
+            self.lcd.borrow_mut()[dot + 1] = pixel.1;
+            self.lcd.borrow_mut()[dot + 2] = pixel.2;
     }
 
     fn apply_scr2_window(&mut self, s2we: bool, s2wc: bool, x: u8, y: u8) -> Option<(u8, u8, u8)> {

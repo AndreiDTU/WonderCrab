@@ -15,6 +15,8 @@ pub struct SoC {
 
     pub(super) samples: Vec<(u16, u16)>,
     sample_acc: f64,
+
+    lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>
 }
 
 impl MemBusConnection for SoC {
@@ -50,11 +52,12 @@ impl SoC {
         let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), trace);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let sound = Sound::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
-        let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus)));
+        let lcd = Rc::new(RefCell::new([0; 3 * 224 * 144]));
+        let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), Rc::clone(&lcd)));
 
         cpu.reset();
 
-        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::with_capacity(320), sample_acc: 0.0}
+        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::with_capacity(320), sample_acc: 0.0, lcd}
     }
 
     pub fn tick(&mut self) -> bool {
@@ -92,8 +95,8 @@ impl SoC {
         return false;
     }
 
-    pub fn get_lcd(&mut self) -> Rc<RefCell<[(u8, u8, u8); 224 * 144]>> {
-        Rc::new(RefCell::new(*self.display.lcd))
+    pub fn get_lcd(&mut self) -> Rc<RefCell<[u8; 3 * 224 * 144]>> {
+        Rc::clone(&self.lcd)
     }
 
     pub fn get_display(&mut self) -> &mut Display {
@@ -108,7 +111,8 @@ impl SoC {
         let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), false);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
         let sound = Sound::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
-        let display = Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
+        let lcd = Rc::new(RefCell::new([0; 3 * 224 * 144]));
+        let display = Box::new(Display::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), Rc::clone(&lcd)));
 
         for i in 0..=0x3FFF {
             mem_bus.borrow_mut().write_mem(i, 0x01);
@@ -116,7 +120,7 @@ impl SoC {
         io_bus.borrow_mut().write_io(0x00, 0xFF);
         io_bus.borrow_mut().write_io(0x1F, 0xF8);
 
-        Self {cpu, dma, sound, mem_bus, io_bus, display: Box::new(display), cycles: 0, samples: Vec::with_capacity(318), sample_acc: 0.0}
+        Self {cpu, dma, sound, mem_bus, io_bus, display, cycles: 0, samples: Vec::with_capacity(318), sample_acc: 0.0, lcd}
     }
 }
 

@@ -93,16 +93,10 @@ fn main() -> Result<(), String> {
             let samples: Vec<u8> = soc.samples.drain(..).map(|(s, _)| s as u8).collect();
             audio_device.queue_audio(&samples).unwrap();
 
-            let mut frame = Vec::with_capacity(soc.get_lcd().borrow().len() * 3);
-            for &(r, g, b) in soc.get_lcd().borrow().iter() {
-                frame.push(r);
-                frame.push(g);
-                frame.push(b);
-            }
-
+            let frame = soc.get_lcd();
+            texture.update(None,&frame.borrow()[..], FRAME_WIDTH as usize * 3).unwrap();
+            
             let angle = if rotated {270.0} else {0.0};
-
-            texture.update(None,&frame, FRAME_WIDTH as usize * 3).unwrap();
             if rotated {
                 canvas.copy_ex(&texture, None, dst, angle, None, false, false).unwrap();
             } else {
