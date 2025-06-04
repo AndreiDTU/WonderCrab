@@ -88,7 +88,7 @@ impl SoC {
 
         self.cycles += 1;
 
-        if self.cycles >= 40703 {
+        if self.cycles >= 40704 {
             self.cycles = 0;
             return true;
         }
