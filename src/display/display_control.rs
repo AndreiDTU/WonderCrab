@@ -485,7 +485,7 @@ impl Display {
                         if raw_px >= 4 || (raw_px == 0 && palette >= 4) {
                             None
                         } else {
-                            Some(if self.color {self.get_monochrome_palette(palette as u8)[raw_px]} else {self.get_color_palette(palette as u8)[raw_px]})
+                            Some(if self.color {self.get_color_palette(palette as u8)[raw_px]} else {self.get_monochrome_palette(palette as u8)[raw_px]})
                         }
                     }
                     PaletteFormat::PLANAR_4BPP | PaletteFormat::PACKED_4BPP => {

@@ -144,7 +144,7 @@ fn main() -> Result<(), String> {
                 audio_device.queue_audio(&samples).unwrap();
             }
 
-            std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)));
+            // std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)));
 
             canvas.clear();
 
