@@ -78,9 +78,9 @@ impl SoC {
         }
 
         let sample = self.sound.tick();
-        self.sample_acc += 24_000;
-        if self.sample_acc >= 3_072_000 {
-            self.sample_acc -= 3_072_000;
+        self.sample_acc += 1;
+        if self.sample_acc >= 128 {
+            self.sample_acc -= 128;
             self.samples.push(sample);
         }
 

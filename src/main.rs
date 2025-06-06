@@ -37,6 +37,7 @@ fn main() -> Result<(), String> {
     let args: Vec<_> = env::args().collect();
     let game = if args.len() > 1 {Some(&args[1])} else {None};
     let trace = args.get(2) == Some(&"trace".to_string());
+    let mute = args.get(2) == Some(&"mute".to_string()) || trace;
 
     let mut soc = if let Some(game) = game {
         let (color, ram_content, rom, mapper, sram) = parse_rom(game);
@@ -59,7 +60,7 @@ fn main() -> Result<(), String> {
     let audio_device: AudioQueue<u8> = audio_subsystem.open_queue(None, &desired_spec)?;
     audio_device.resume();
 
-    let mut canvas = window.into_canvas().build().unwrap();
+    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
     canvas.set_logical_size(FRAME_WIDTH, FRAME_HEIGHT).unwrap();
     let creator = canvas.texture_creator();
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, FRAME_WIDTH, FRAME_HEIGHT).unwrap();
@@ -136,10 +137,15 @@ fn main() -> Result<(), String> {
             let delta = now - previous;
             previous = now;
 
+            if mute {
+                soc.samples.clear();
+            } else {
+                let samples: Vec<u8> = soc.samples.drain(..).map(|(s, _)| s as u8).collect();
+                audio_device.queue_audio(&samples).unwrap();
+            }
+
             std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)));
 
-            let samples: Vec<u8> = soc.samples.drain(..).map(|(s, _)| s as u8).collect();
-            audio_device.queue_audio(&samples).unwrap();
             canvas.clear();
 
             let frame = soc.get_lcd();

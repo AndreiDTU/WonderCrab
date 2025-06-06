@@ -164,19 +164,18 @@ impl V30MZ {
         // println!("CMP address before: {:05X}", self.get_pc_address());
         match mode {
             Mode::M8 => {
-                let old_dest = self.resolve_src_8(op1, extra);
-                let src = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
-                    self.get_imm8()
+                let (dest, src) = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
+                    (self.resolve_mem_src_8(self.current_op[1], extra), self.get_imm8())
                 } else {
-                    self.resolve_src_8(op2, extra)
+                    (self.resolve_src_8(op1, extra), self.resolve_src_8(op2, extra))
                 };
 
-                let result = old_dest.wrapping_sub(src);
+                let result = dest.wrapping_sub(src);
 
-                self.update_flags_sub_8(old_dest, src, result, 0);
+                self.update_flags_sub_8(dest, src, result, 0);
             }
             Mode::M16 => {
-                let old_dest = self.resolve_src_16(op1, extra);
+                let dest = self.resolve_src_16(op1, extra);
                 let src = if op2 == Operand::IMMEDIATE_S {
                     self.get_imm8() as i8 as i16 as u16
                 } else if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
@@ -185,9 +184,9 @@ impl V30MZ {
                     self.resolve_src_16(op2, extra)
                 };
 
-                let result = old_dest.wrapping_sub(src);
+                let result = dest.wrapping_sub(src);
 
-                self.update_flags_sub_16(old_dest, src, result, 0);
+                self.update_flags_sub_16(dest, src, result, 0);
             }
             Mode::M32 => unreachable!(),
         }

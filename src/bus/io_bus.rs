@@ -70,8 +70,6 @@ impl IOBusConnection for IOBus {
                 }
             }
 
-            0x91 => (self.ports[0x91] & 0x0F) | 0x09,
-
             // VBLANK is always enabled in INT_ENABLE
             0xB2 => self.ports[0xB2] | (1 << 6),
 
@@ -153,8 +151,6 @@ impl IOBusConnection for IOBus {
 
             // Lowest bit of GDMA_COUNTER is always clear
             0x47 => self.ports[0x47] = byte & 0xFE,
-
-            0x91 => self.ports[0x91] = byte & 0x06,
 
             // Writing to HBLANK and VBLANK timers also sets the counters
             0xA4 => {
