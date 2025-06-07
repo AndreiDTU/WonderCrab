@@ -2,6 +2,7 @@ use crate::bus::io_bus::IOBus;
 
 pub mod cart_ports;
 
+#[derive(PartialEq)]
 pub enum Mapper {
     B_2001,
     B_2003,

@@ -92,9 +92,9 @@ fn main() -> Result<(), String> {
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
-                        // for addr in 0x3980..=0x3981 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
-                        // for addr in 0x29C0..=0x29CF {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
-                        // soc.get_display().debug_sprites();
+                        // for addr in 0x3B52..=0x3B53 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
+                        // for addr in 0x4340..=0x435F {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
+                        // soc.get_display().debug_screen_2();
                         // soc.io_bus.borrow().debug_eeprom();
                         return Ok(());
                     },
@@ -184,6 +184,8 @@ fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool) {
         1 => Mapper::B_2003,
         _ => panic!("Unknown mapper!"),
     };
+
+    // if mapper == Mapper::B_2003 {println!("Mapper 2003")}
 
     (color, save, rom, mapper, sram)
 }

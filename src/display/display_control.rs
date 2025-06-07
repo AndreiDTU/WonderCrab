@@ -525,49 +525,25 @@ impl Display {
     }
 
     pub fn debug_screen_1(&mut self) {
-        let element = self.screen_1_elements[6][0];
+        let element = self.screen_1_elements[1][11];
         println!("Element: {:#?}", element);
-        let base = 0x2000 + (element.tile_idx as u32) * 16;
+        let base = 0x4000 + (element.tile_idx as u32) * 32;
         println!("Reading tile from {:04X}", base);
-        println!("Tile: {:#?}", self.screen_1_tiles[6][0]);
-        println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PLANAR_2BPP));
-        let lo = self.read_io(0x20 + (self.screen_1_elements[6][0].palette as u16) * 2);
-        let hi = self.read_io(0x21 + (self.screen_1_elements[6][0].palette as u16) * 2);
-        let (c0, c1) = (lo & 0x07, (lo >> 4) & 0x07);
-        let (c2, c3) = (hi & 0x07, (hi >> 4) & 0x07);
-        println!("Palette raw: {:#?}", (c0, c1, c2, c3));
-        for i in 0..8 {
-            let (port, shift) = (i / 2, i % 2);
-            let addr = 0x1C + port;
-            let gradation = self.read_io(addr) >> (shift * 4) & 0x0F;
-            println!("Gradation {} at port {:02X}, from raw_px {}", gradation, addr, i);
-        };
-        println!("Port 0x1F: {:02X}", self.read_io(0x1F));
-        println!("Palette RGB: {:#?}", self.get_monochrome_palette(self.screen_1_elements[6][0].palette));
+        println!("Tile: {:#?}", self.screen_1_tiles[1][11]);
+        println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PACKED_4BPP));
+        println!("Palette RGB: {:#?}", self.get_color_palette(element.palette));
         println!("Scroll 1 x: {} y: {}", self.read_io(0x10), self.read_io(0x11));
     }
 
     pub fn debug_screen_2(&mut self) {
-        let element = self.screen_2_elements[12][0];
+        let element = self.screen_2_elements[13][9];
         println!("Element: {:#?}", element);
-        let base = 0x2000 + (element.tile_idx as u32) * 16;
+        let base = 0x4000 + (element.tile_idx as u32) * 32;
         println!("Reading tile from {:04X}", base);
-        println!("Tile: {:#?}", self.screen_2_tiles[12][0]);
-        println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PLANAR_2BPP));
-        let lo = self.read_io(0x20 + (self.screen_2_elements[12][0].palette as u16) * 2);
-        let hi = self.read_io(0x21 + (self.screen_2_elements[12][0].palette as u16) * 2);
-        let (c0, c1) = (lo & 0x07, (lo >> 4) & 0x07);
-        let (c2, c3) = (hi & 0x07, (hi >> 4) & 0x07);
-        println!("Palette raw: {:#?}", (c0, c1, c2, c3));
-        for i in 0..8 {
-            let (port, shift) = (i / 2, i % 2);
-            let addr = 0x1C + port;
-            let gradation = self.read_io(addr) >> (shift * 4) & 0x0F;
-            println!("Gradation {} at port {:02X}, from raw_px {}", gradation, addr, i);
-        };
-        println!("Port 0x1F: {:02X}", self.read_io(0x1F));
-        println!("Palette RGB: {:#?}", self.get_monochrome_palette(self.screen_2_elements[12][0].palette));
-        println!("Scroll 2 x: {} y: {}", self.read_io(0x12), self.read_io(0x13));
+        println!("Tile: {:#?}", self.screen_2_tiles[13][9]);
+        println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PACKED_4BPP));
+        println!("Palette RGB: {:#?}", self.get_color_palette(element.palette));
+        println!("Scroll 1 x: {} y: {}", self.read_io(0x10), self.read_io(0x11));
     }
 
     pub fn debug_sprites(&mut self) {

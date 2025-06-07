@@ -41,11 +41,11 @@ impl IOBusConnection for IOBus {
             0x20..=0x3F => self.ports[addr as usize] & 0x77,
 
             // Lowest bit of GDMA_SOURCE_L is always clear
-            0x41 => self.ports[0x41] & 0xFE,
+            0x40 => self.ports[0x40] & 0xFE,
 
             // Bits 4-15 of GDMA_SOURCE_H are undefined
-            0x42 => 0,
-            0x43 => self.ports[0x43] & 0x0F,
+            0x42 => self.ports[0x42] & 0x0F,
+            0x43 => 0,
 
             // Lowest bit of GDMA_DESTINATION is always clear
             0x45 => self.ports[0x45] & 0xFE,
@@ -144,7 +144,11 @@ impl IOBusConnection for IOBus {
             0x20..=0x3E => self.ports[addr as usize] = byte & 0x77,
 
             // Lowest bit of GDMA_SOURCE_L is always clear
-            0x41 => self.ports[0x41] = byte & 0xFE,
+            0x40 => self.ports[0x40] = byte & 0xFE,
+
+            // Bits 4-15 of GDMA_SOURCE_H are undefined
+            0x42 => self.ports[0x42] = byte & 0x0F,
+            0x43 => {},
 
             // Lowest bit of GDMA_DESTINATION is always clear
             0x45 => self.ports[0x45] = byte & 0xFE,
