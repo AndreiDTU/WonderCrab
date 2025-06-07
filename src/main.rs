@@ -59,7 +59,7 @@ fn main() -> Result<(), String> {
 
     let mut soc = if let Some(game) = game {
         let (color, ram_content, rom, mapper, sram) = parse_rom(game);
-        SoC::new(color, ram_content, rom, mapper, sram, trace, Arc::clone(&samples))
+        SoC::new(color, ram_content, rom, mapper, sram, trace, Arc::clone(&samples), mute)
     } else {SoC::test_build()};
 
     let sdl_context = sdl2::init()?;

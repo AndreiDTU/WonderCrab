@@ -17,6 +17,8 @@ pub struct SoC {
     sample_acc: u64,
 
     lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>,
+
+    mute: bool,
 }
 
 impl MemBusConnection for SoC {
@@ -40,7 +42,7 @@ impl IOBusConnection for SoC {
 }
 
 impl SoC {
-    pub fn new(color: bool, ram_content: Vec<u8>, rom: Vec<u8>, mapper: Mapper, sram: bool, trace: bool, samples: Arc<Mutex<Vec<(u16, u16)>>>) -> Self {
+    pub fn new(color: bool, ram_content: Vec<u8>, rom: Vec<u8>, mapper: Mapper, sram: bool, trace: bool, samples: Arc<Mutex<Vec<(u16, u16)>>>, mute: bool) -> Self {
         let (cartridge, eeprom) = if sram {
             (Rc::new(RefCell::new(Cartridge::new(mapper, ram_content, rom, sram))), None)
         } else {
@@ -57,7 +59,7 @@ impl SoC {
 
         cpu.reset();
 
-        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples, sample_acc: 0, lcd}
+        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples, sample_acc: 0, lcd, mute}
     }
 
     pub fn tick(&mut self) -> bool {
@@ -78,10 +80,12 @@ impl SoC {
         }
 
         let sample = self.sound.tick();
-        self.sample_acc += 1;
-        if self.sample_acc >= 128 {
-            self.sample_acc -= 128;
-            self.samples.lock().unwrap().push(sample);
+        if !self.mute {
+            self.sample_acc += 1;
+            if self.sample_acc >= 128 {
+                self.sample_acc -= 128;
+                self.samples.lock().unwrap().push(sample);
+            }
         }
 
         self.display.tick();
@@ -120,7 +124,7 @@ impl SoC {
         io_bus.borrow_mut().write_io(0x00, 0xFF);
         io_bus.borrow_mut().write_io(0x1F, 0xF8);
 
-        Self {cpu, dma, sound, mem_bus, io_bus, display, cycles: 0, samples: Arc::new(Mutex::new(Vec::new())), sample_acc: 0, lcd}
+        Self {cpu, dma, sound, mem_bus, io_bus, display, cycles: 0, samples: Arc::new(Mutex::new(Vec::new())), sample_acc: 0, lcd, mute: true}
     }
 }
 
