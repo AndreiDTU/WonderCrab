@@ -120,7 +120,7 @@ impl V30MZ {
         let old_sign = a & 0x8000;
         let new_sign = res & 0x8000;
 
-        self.PSW.set(CpuStatus::ZERO, a == b);
+        self.PSW.set(CpuStatus::ZERO, res == 0);
         self.PSW.set(CpuStatus::SIGN, new_sign != 0);
         self.PSW.set(CpuStatus::OVERFLOW, old_sign != b & 0x8000 && old_sign != new_sign);
         self.PSW.set(CpuStatus::CARRY, a < b || (a as u32) < b as u32 + carry as u32);

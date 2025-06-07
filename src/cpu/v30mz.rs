@@ -580,6 +580,7 @@ impl V30MZ {
     }
 
     fn finish_op(&mut self, old_IE: bool) {
+        // if self.current_op == vec![0x81, 0xC6, 0x00, 0x40] && self.IX == 0x5000 {self.trace = true}
         self.no_interrupt = (self.PSW.contains(CpuStatus::INTERRUPT) != old_IE) && !old_IE;
 
         self.PSW = CpuStatus::from_bits_truncate(self.PSW.bits() | 0xF002);

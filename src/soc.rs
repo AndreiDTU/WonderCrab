@@ -57,7 +57,7 @@ impl SoC {
 
         cpu.reset();
 
-        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::with_capacity(320), sample_acc: 0, lcd}
+        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::new(), sample_acc: 0, lcd}
     }
 
     pub fn tick(&mut self) -> bool {
@@ -88,7 +88,7 @@ impl SoC {
 
         self.cycles += 1;
 
-        if self.cycles >= 40704 {
+        if self.cycles == 40704 {
             self.cycles = 0;
             return true;
         }

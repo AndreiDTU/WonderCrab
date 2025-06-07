@@ -198,6 +198,7 @@ impl Sound {
 
                 if noise_ctrl & 0x08 != 0 {
                     self.write_io(0x92, 0);
+                    self.write_io(0x8E, noise_ctrl & 0xF7);
                 }
 
                 let (lo, hi) = self.read_io_16(0x92);

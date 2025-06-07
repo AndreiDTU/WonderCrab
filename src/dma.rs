@@ -59,6 +59,7 @@ impl DMA {
                     self.cycles = 7;
                     self.get_dest_addr();
                     self.mem_bus.borrow_mut().owner = Owner::DMA;
+                    // println!("dest_addr: {:04X}", self.dest_addr)
                 }
             }
         }

@@ -163,12 +163,9 @@ impl Display {
             240 => self.fetch_sprite_tile(32),
             */
 
-            225 => {
-                self.io_bus.borrow_mut().hblank();
-            }
-
             255 => {
                 self.scanline += 1;
+                self.io_bus.borrow_mut().hblank();
                 self.io_bus.borrow_mut().set_lcd_line(self.scanline);
             }
             _ => {}

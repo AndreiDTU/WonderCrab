@@ -161,7 +161,6 @@ impl V30MZ {
     }
 
     pub fn cmp(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
-        // println!("CMP address before: {:05X}", self.get_pc_address());
         match mode {
             Mode::M8 => {
                 let (dest, src) = if op2 == Operand::IMMEDIATE && op1 == Operand::MEMORY {
@@ -190,7 +189,6 @@ impl V30MZ {
             }
             Mode::M32 => unreachable!(),
         }
-        // println!("CMP address after: {:05X}", self.apply_segment(self.PC.wrapping_add(self.pc_displacement), self.PS));
     }
 
     pub fn dec(&mut self, op: Operand, mode: Mode, extra: u8) {
@@ -515,9 +513,16 @@ impl V30MZ {
     pub fn cvtbd(&mut self) {
         let src = self.current_op[1];
         if src == 0 {
+            self.PSW.remove(CpuStatus::AUX_CARRY);
+            self.PSW.remove(CpuStatus::PARITY);
+            self.PSW.remove(CpuStatus::SIGN);
+            self.PSW.set(CpuStatus::ZERO, self.AW & 0xC0 != 0);
             return self.raise_exception(0);
         }
-        let (AL, AH) = (self.AW as u8 / src, self.AW as u8 % src);
+        let (AH, AL) = (self.AW as u8 / src, self.AW as u8 % src);
+        self.PSW.remove(CpuStatus::CARRY);
+        self.PSW.remove(CpuStatus::AUX_CARRY);
+        self.PSW.remove(CpuStatus::OVERFLOW);
         self.PSW.set(CpuStatus::ZERO, AL == 0);
         self.PSW.set(CpuStatus::SIGN, AL & 0x80 != 0);
         self.PSW.set(CpuStatus::PARITY, parity(AL));
@@ -526,16 +531,15 @@ impl V30MZ {
     }
 
     pub fn cvtdb(&mut self) {
-        let src = self.current_op[1] as u16;
+        let src = self.current_op[1];
 
-        let (AH, AL) = ((self.AW >> 8) as u8, self.AW as u8);
+        let (AH, AL) = ((self.AW >> 8) as u8, (self.AW & 0xFF) as u8);
 
-        let mul = AH as u16 * src;
-        let result = mul + AL as u16;
+        let mul = AH.wrapping_mul(src);
+        let result = mul as u16 + AL as u16;
 
-        self.AW = swap_l(self.AW, result as u8);
-        self.AW &= 0xFF;
-        self.update_flags_add_8(AL as u16, mul, result, 0);
+        self.AW = result & 0xFF;
+        self.update_flags_add_8(AL as u16, mul as u16, result, 0);
     }
 
     pub fn sub(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {

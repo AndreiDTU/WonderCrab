@@ -89,6 +89,26 @@ fn main() -> Result<(), String> {
 
     loop {
         if soc.tick() {
+            if mute {
+                soc.samples.clear();
+            } else {
+                let samples: Vec<u8> = soc.samples.drain(..).map(|(s, _)| s as u8).collect();
+                audio_device.queue_audio(&samples).unwrap();
+            }
+
+            canvas.clear();
+
+            let frame = soc.get_lcd();
+            texture.update(None,&frame.borrow()[..], FRAME_WIDTH as usize * 3).unwrap();
+            
+            let angle = if rotated {270.0} else {0.0};
+            if rotated {
+                canvas.copy_ex(&texture, None, dst, angle, None, false, false).unwrap();
+            } else {
+                canvas.copy(&texture, None, None)?;
+            }
+            canvas.present();
+            
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
@@ -133,31 +153,12 @@ fn main() -> Result<(), String> {
                     _ => {}
                 }
             }
+
             let now = Instant::now();
             let delta = now - previous;
             previous = now;
 
-            if mute {
-                soc.samples.clear();
-            } else {
-                let samples: Vec<u8> = soc.samples.drain(..).map(|(s, _)| s as u8).collect();
-                audio_device.queue_audio(&samples).unwrap();
-            }
-
-            // std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)));
-
-            canvas.clear();
-
-            let frame = soc.get_lcd();
-            texture.update(None,&frame.borrow()[..], FRAME_WIDTH as usize * 3).unwrap();
-            
-            let angle = if rotated {270.0} else {0.0};
-            if rotated {
-                canvas.copy_ex(&texture, None, dst, angle, None, false, false).unwrap();
-            } else {
-                canvas.copy(&texture, None, None)?;
-            }
-            canvas.present();
+            std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)));
         }
     }
 }

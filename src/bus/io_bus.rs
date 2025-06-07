@@ -48,10 +48,10 @@ impl IOBusConnection for IOBus {
             0x43 => 0,
 
             // Lowest bit of GDMA_DESTINATION is always clear
-            0x45 => self.ports[0x45] & 0xFE,
+            0x44 => self.ports[0x44] & 0xFE,
 
             // Lowest bit of GDMA_COUNTER is always clear
-            0x47 => self.ports[0x47] & 0xFE,
+            0x46 => self.ports[0x46] & 0xFE,
 
             // Lowest bits of GDMA_CTRL are undefined on read
             // GDMA_CTRL clears on read
@@ -151,10 +151,10 @@ impl IOBusConnection for IOBus {
             0x43 => {},
 
             // Lowest bit of GDMA_DESTINATION is always clear
-            0x45 => self.ports[0x45] = byte & 0xFE,
+            0x44 => self.ports[0x44] = byte & 0xFE,
 
             // Lowest bit of GDMA_COUNTER is always clear
-            0x47 => self.ports[0x47] = byte & 0xFE,
+            0x46 => self.ports[0x46] = byte & 0xFE,
 
             // Writing to HBLANK and VBLANK timers also sets the counters
             0xA4 => {
@@ -330,13 +330,16 @@ impl IOBus {
 
     pub (crate) fn vblank(&mut self) {
         self.ports[0xB4] |= (1 << 6) & self.ports[0xB2];
-        if self.ports[0xA3] & 4 != 0 {
+        if self.ports[0xA2] & 4 != 0 {
             let counter = u16::from_le_bytes([self.ports[0xAA], self.ports[0xAB]]);
-            if counter == 0 {
+            if counter == 1 {
                 self.ports[0xB4] |= (1 << 5) & self.ports[0xB2];
-                if self.ports[0xA3] & 8 != 0 {
+                if self.ports[0xA2] & 8 != 0 {
                     self.ports[0xAA] = self.ports[0xA6];
                     self.ports[0xAB] = self.ports[0xA7];
+                } else {
+                    self.ports[0xAA] = 0;
+                    self.ports[0xAB] = 0;
                 }
             } else {
                 let counter = counter - 1;
@@ -346,13 +349,16 @@ impl IOBus {
     }
 
     pub (crate) fn hblank(&mut self) {
-        if self.ports[0xA3] & 1 != 0 {
+        if self.ports[0xA2] & 1 != 0 {
             let counter = u16::from_le_bytes([self.ports[0xA8], self.ports[0xA9]]);
-            if counter == 0 {
+            if counter == 1 {
                 self.ports[0xB4] |= (1 << 7) & self.ports[0xB2];
-                if self.ports[0xA3] & 2 != 0 {
+                if self.ports[0xA2] & 2 != 0 {
                     self.ports[0xA8] = self.ports[0xA4];
                     self.ports[0xA9] = self.ports[0xA5];
+                } else {
+                    self.ports[0xA8] = 0;
+                    self.ports[0xA9] = 0;
                 }
             } else {
                 let counter = counter - 1;
