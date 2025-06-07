@@ -62,33 +62,33 @@ impl Sound {
 
         let samples = self.channel_outputs();
 
-        let mut volumes: [(u8, u8); 4] = std::array::from_fn(|i| {
+        let volumes: [(u8, u8); 4] = std::array::from_fn(|i| {
             let volume = self.read_io(0x88 + i as u16);
             (volume >> 4, volume & 0xF)
         });
 
+        let mut stereo_samples: [(u8, u8); 4] = std::array::from_fn(|i| {
+            (samples[i] * volumes[i].0, samples[i] * volumes[i].1)
+        });
+
         if self.control.contains(SoundControl::VOICE) {
-            let voice = samples[2];
+            let voice = samples[1];
             let voice_volume = self.read_io(0x94);
 
             let right = if voice_volume & 0b0001 != 0 {
                 voice
             } else if voice_volume & 0b0010 != 0 {
-                voice / 2
+                voice >> 1
             } else {0};
 
             let left = if voice_volume & 0b0100 != 0 {
                 voice
             } else if voice_volume & 0b1000 != 0 {
-                voice / 2
+                voice >> 1
             } else {0};
 
-            volumes[2] = (left, right);
+            stereo_samples[1] = (left, right);
         }
-
-        let stereo_samples: [(u8, u8); 4] = std::array::from_fn(|i| {
-            (samples[i] * volumes[i].0, samples[i] * volumes[i].1)
-        });
 
         let stereo_output = stereo_samples.iter()
             .copied()
