@@ -1,10 +1,9 @@
-use std::{collections::HashMap, env, time::{Duration, Instant}};
+use std::{collections::HashMap, env, sync::{Arc, Mutex}, time::{Duration, Instant}};
 
-use bus::mem_bus::MemBusConnection;
 use cartridge::Mapper;
 use keypad::Keys;
 use mimalloc::MiMalloc;
-use sdl2::{audio::{AudioQueue, AudioSpecDesired}, event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
+use sdl2::{audio::{AudioCallback, AudioQueue, AudioSpecDesired}, event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
 use soc::SoC;
 
 #[global_allocator]
@@ -33,15 +32,34 @@ const WINDOW_HEIGHT: u32 = 864;
 const FRAME_WIDTH: u32 = 224;
 const FRAME_HEIGHT: u32 = 144;
 
+struct SampleStream {
+    samples: Arc<Mutex<Vec<(u16, u16)>>>
+}
+
+impl AudioCallback for SampleStream {
+    type Channel = u8;
+
+    fn callback(&mut self, out: &mut [Self::Channel]) {
+        let mut buffer = self.samples.lock().unwrap();
+        for request in out {
+            if let Some(sample) = buffer.pop() {
+                *request = sample.0 as u8
+            }
+        }
+    }
+}
+
 fn main() -> Result<(), String> {
     let args: Vec<_> = env::args().collect();
     let game = if args.len() > 1 {Some(&args[1])} else {None};
     let trace = args.get(2) == Some(&"trace".to_string());
     let mute = args.get(2) == Some(&"mute".to_string()) || trace;
 
+    let samples = Arc::new(Mutex::new(Vec::new()));
+
     let mut soc = if let Some(game) = game {
         let (color, ram_content, rom, mapper, sram) = parse_rom(game);
-        SoC::new(color, ram_content, rom, mapper, sram, trace)
+        SoC::new(color, ram_content, rom, mapper, sram, trace, Arc::clone(&samples))
     } else {SoC::test_build()};
 
     let sdl_context = sdl2::init()?;
@@ -57,7 +75,7 @@ fn main() -> Result<(), String> {
         channels: Some(1),
         samples: Some(1024),
     };
-    let audio_device: AudioQueue<u8> = audio_subsystem.open_queue(None, &desired_spec)?;
+    let audio_device = audio_subsystem.open_playback(None, &desired_spec, |_| SampleStream {samples: Arc::clone(&samples)})?;
     audio_device.resume();
 
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
@@ -86,15 +104,20 @@ fn main() -> Result<(), String> {
     let mut previous = Instant::now();
     let mut rotated = false;
     let mut dst = Rect::new(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+    let mut first_frame = true;
 
     loop {
         if soc.tick() {
-            if mute {
-                soc.samples.clear();
+            let now = Instant::now();
+            let delta = if first_frame {
+                first_frame = false;
+                Instant::now() - Instant::now()
             } else {
-                let samples: Vec<u8> = soc.samples.drain(..).map(|(s, _)| s as u8).collect();
-                audio_device.queue_audio(&samples).unwrap();
-            }
+                now - previous
+            };
+            previous = now;
+
+            std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)));
 
             canvas.clear();
 
@@ -153,12 +176,6 @@ fn main() -> Result<(), String> {
                     _ => {}
                 }
             }
-
-            let now = Instant::now();
-            let delta = now - previous;
-            previous = now;
-
-            std::thread::sleep(Duration::from_micros(13_250u64.saturating_sub(delta.as_micros() as u64)));
         }
     }
 }

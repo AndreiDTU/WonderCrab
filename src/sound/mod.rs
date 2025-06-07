@@ -194,7 +194,7 @@ impl Sound {
 
             if self.noise_clock == 0 {
                 let (lo, hi) = self.read_io_16(0x86);
-                self.noise_clock = u16::from_le_bytes([lo, hi]) & 0x1FF;
+                self.noise_clock = 2048 - u16::from_le_bytes([lo, hi]) & 0x1FF;
 
                 if noise_ctrl & 0x08 != 0 {
                     self.write_io(0x92, 0);

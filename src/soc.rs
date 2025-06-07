@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::{Arc, Mutex}};
 
 use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA, keypad::Keypad, sound::Sound};
 
@@ -13,10 +13,10 @@ pub struct SoC {
 
     cycles: usize,
 
-    pub(super) samples: Vec<(u16, u16)>,
+    pub(super) samples: Arc<Mutex<Vec<(u16, u16)>>>,
     sample_acc: u64,
 
-    lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>
+    lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>,
 }
 
 impl MemBusConnection for SoC {
@@ -40,7 +40,7 @@ impl IOBusConnection for SoC {
 }
 
 impl SoC {
-    pub fn new(color: bool, ram_content: Vec<u8>, rom: Vec<u8>, mapper: Mapper, sram: bool, trace: bool) -> Self {
+    pub fn new(color: bool, ram_content: Vec<u8>, rom: Vec<u8>, mapper: Mapper, sram: bool, trace: bool, samples: Arc<Mutex<Vec<(u16, u16)>>>) -> Self {
         let (cartridge, eeprom) = if sram {
             (Rc::new(RefCell::new(Cartridge::new(mapper, ram_content, rom, sram))), None)
         } else {
@@ -57,7 +57,7 @@ impl SoC {
 
         cpu.reset();
 
-        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples: Vec::new(), sample_acc: 0, lcd}
+        Self {cpu, dma, sound, display, mem_bus, io_bus, cycles: 0, samples, sample_acc: 0, lcd}
     }
 
     pub fn tick(&mut self) -> bool {
@@ -81,7 +81,7 @@ impl SoC {
         self.sample_acc += 1;
         if self.sample_acc >= 128 {
             self.sample_acc -= 128;
-            self.samples.push(sample);
+            self.samples.lock().unwrap().push(sample);
         }
 
         self.display.tick();
@@ -120,7 +120,7 @@ impl SoC {
         io_bus.borrow_mut().write_io(0x00, 0xFF);
         io_bus.borrow_mut().write_io(0x1F, 0xF8);
 
-        Self {cpu, dma, sound, mem_bus, io_bus, display, cycles: 0, samples: Vec::with_capacity(318), sample_acc: 0, lcd}
+        Self {cpu, dma, sound, mem_bus, io_bus, display, cycles: 0, samples: Arc::new(Mutex::new(Vec::new())), sample_acc: 0, lcd}
     }
 }
 

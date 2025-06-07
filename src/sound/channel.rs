@@ -28,7 +28,7 @@ impl Channel {
             self.sample_clock = self.frequency;
             self.sample_idx = (self.sample_idx + 1) & 0x1F;
             let byte = self.waveform[self.sample_idx / 2];
-            self.sample = byte >> ((self.sample_idx % 2) * 4);
+            self.sample = (byte >> ((self.sample_idx & 1) * 4)) & 0x0F;
         }
 
         return self.sample;
