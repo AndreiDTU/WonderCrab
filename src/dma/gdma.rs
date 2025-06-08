@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}};
+use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, dma::DMA};
 
-pub struct DMA {
+pub struct GDMA {
     mem_bus: Rc<RefCell<MemBus>>,
     io_bus: Rc<RefCell<IOBus>>,
 
@@ -14,7 +14,7 @@ pub struct DMA {
     dir: bool,
 }
 
-impl MemBusConnection for DMA {
+impl MemBusConnection for GDMA {
     fn read_mem(&mut self, addr: u32) -> u8 {
         self.mem_bus.borrow_mut().read_mem(addr)
     }
@@ -24,7 +24,7 @@ impl MemBusConnection for DMA {
     }
 }
 
-impl IOBusConnection for DMA {
+impl IOBusConnection for GDMA {
     fn read_io(&mut self, addr: u16) -> u8 {
         self.io_bus.borrow_mut().read_io(addr)
     }
@@ -34,12 +34,8 @@ impl IOBusConnection for DMA {
     }
 }
 
-impl DMA {
-    pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
-        Self {mem_bus, io_bus, cycles: 0, src_addr: 0, dest_addr: 0, counter: 0, dir: false}
-    }
-
-    pub fn is_enabled(&mut self) -> bool {
+impl DMA for GDMA {
+    fn is_enabled(&mut self) -> bool {
         if !self.io_bus.borrow_mut().color_mode() {return false}
         
         let ctrl = self.read_io(0x48);
@@ -48,7 +44,7 @@ impl DMA {
         ctrl & 0x80 != 0
     }
 
-    pub fn start_op(&mut self) {
+    fn start_op(&mut self) {
         self.get_counter();
         if self.counter != 0 {
             // println!("counter: {:02X}", self.counter);
@@ -65,7 +61,7 @@ impl DMA {
         }
     }
 
-    pub fn tick(&mut self) {
+    fn tick(&mut self) {
         self.cycles -= 1;
         if self.cycles == 0 {
             self.cycles = 2;
@@ -101,10 +97,18 @@ impl DMA {
             }
         }
     }
+}
+
+impl GDMA {
+    pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
+        Self {mem_bus, io_bus, cycles: 0, src_addr: 0, dest_addr: 0, counter: 0, dir: false}
+    }
 
     fn get_src_addr(&mut self) {
         let (lo, hi) = self.read_io_16(0x40);
-        self.src_addr = (((self.read_io(0x42) & 0x0F) as u32) << 16) | u16::from_le_bytes([lo, hi]) as u32;
+        let offset = u16::from_le_bytes([lo, hi]) as u32;
+        let segment = (self.read_io(0x42) & 0x0F) as u32;
+        self.src_addr = (segment << 16) | offset;
     }
 
     fn get_dest_addr(&mut self) {

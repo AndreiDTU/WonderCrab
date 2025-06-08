@@ -640,8 +640,9 @@ impl V30MZ {
             self.halt = false;
             if self.PSW.contains(CpuStatus::INTERRUPT) || nmi {
                 let source = cause.trailing_zeros() as u8;
+                if source == 1 {self.trace = true}
                 // if source == 0x01 {println!("KEY interrupt")}
-                let vector = self.read_io(0xB0).wrapping_add(source);
+                let vector = (self.read_io(0xB0) & 0xF8).wrapping_add(source);
                 // println!("Interrupt triggered: vector={:02X}", vector);
                 self.raise_exception(vector);
                 return true;

@@ -170,12 +170,12 @@ fn main() -> Result<(), String> {
                             // Tracing makes the framerate unplayable,
                             // this is disabled to make sure the user
                             // doesn't press it by accident
-                            /*
+                            
                             if let Some(Keycode::T) = keycode {
                                 soc.cpu.trace = !trace;
                                 soc.mute = !mute;
                             }
-                            */
+                            
                             if let Some(key) = key_map.get(&key) {
                                 soc.io_bus.borrow_mut().set_key(*key, true);
                             }
@@ -227,7 +227,7 @@ fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Mapper, b
 
     let rom_info = footer[0xC] & 0x0C;
 
-    // if mapper == Mapper::B_2003 {println!("Mapper 2003")}
+    if mapper == Mapper::B_2003 {println!("Mapper 2003")}
 
     (color, save, ieeprom, eeprom, rom, mapper, sram, rom_info)
 }

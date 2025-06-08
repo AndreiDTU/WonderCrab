@@ -62,6 +62,12 @@ impl IOBusConnection for IOBus {
                 output
             }
 
+            0x4C => self.ports[0x4C] & 0x0F,
+            0x4D => 0,
+
+            0x50 => self.ports[0x50] & 0x0F,
+            0x51 => 0,
+
             // SYSTEM_CTRL_2 is color only
             0x60 => {
                 if self.color_mode() {
@@ -157,6 +163,12 @@ impl IOBusConnection for IOBus {
             // Lowest bit of GDMA_COUNTER is always clear
             0x46 => self.ports[0x46] = byte & 0xFE,
 
+            0x4C => self.ports[0x4C] = byte & 0x0F,
+            0x4D => {},
+
+            0x50 => self.ports[0x50] = byte & 0x0F,
+            0x51 => {},
+
             // Writing to HBLANK and VBLANK timers also sets the counters
             0xA4 => {
                 self.ports[0xA4] = byte;
@@ -194,7 +206,7 @@ impl IOBusConnection for IOBus {
                 self.ports[0xB5] = (byte & 0x70) | self.keypad.read_keys();
                 if (self.ports[0xB5] & 0x0F) != old_keys {
                     // println!("Keys pressed!");
-                    self.ports[0xB4] |= 0x02 & self.ports[0xB2];
+                    self.ports[0xB4] |= (1 << 1) & self.ports[0xB2];
                 }
             }
 
@@ -335,8 +347,8 @@ impl IOBus {
         self.keypad.set_key(key, pressed);
         let old_keys = self.ports[0xB5];
         self.ports[0xB5] |= self.keypad.read_keys();
-        if old_keys != self.ports[0xB5] {
-            self.ports[0xB4] |= 0x02 & self.ports[0xB2];
+        if !old_keys & self.ports[0xB5] != 0 {
+            self.ports[0xB4] |= (1 << 1) & self.ports[0xB2];
         }
     }
 
