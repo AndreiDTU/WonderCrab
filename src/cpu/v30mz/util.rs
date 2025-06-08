@@ -449,8 +449,8 @@ impl V30MZ {
         let (base, result_segment) = match m {
             0 => (self.BW.wrapping_add(self.IX), segment),
             1 => (self.BW.wrapping_add(self.IY), segment),
-            2 => (self.BW.wrapping_add(self.IX), self.SS),
-            3 => (self.BW.wrapping_add(self.IY), self.SS),
+            2 => (self.BP.wrapping_add(self.IX), self.SS),
+            3 => (self.BP.wrapping_add(self.IY), self.SS),
             4 => (self.IX, segment),
             5 => (self.IY, segment),
             6 => (self.BP, self.SS),

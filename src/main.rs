@@ -3,7 +3,7 @@ use std::{collections::HashMap, env, sync::{Arc, Mutex}, time::{Duration, Instan
 use cartridge::Mapper;
 use keypad::Keys;
 use mimalloc::MiMalloc;
-use sdl2::{audio::{AudioCallback, AudioQueue, AudioSpecDesired}, event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
+use sdl2::{audio::{AudioCallback, AudioSpecDesired}, event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
 use soc::SoC;
 
 #[global_allocator]
@@ -58,8 +58,8 @@ fn main() -> Result<(), String> {
     let samples = Arc::new(Mutex::new(Vec::new()));
 
     let mut soc = if let Some(game) = game {
-        let (color, ram_content, rom, mapper, sram) = parse_rom(game);
-        SoC::new(color, ram_content, rom, mapper, sram, trace, Arc::clone(&samples), mute)
+        let (color, ram_content, rom, mapper, sram, rom_info) = parse_rom(game);
+        SoC::new(color, ram_content, rom, mapper, sram, trace, Arc::clone(&samples), mute, rom_info)
     } else {SoC::test_build()};
 
     let sdl_context = sdl2::init()?;
@@ -137,7 +137,7 @@ fn main() -> Result<(), String> {
                     Event::Quit { .. } | Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
                         // for addr in 0x3B52..=0x3B53 {println!("SCREEN ELEMENT: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // for addr in 0x4340..=0x435F {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
-                        // soc.get_display().debug_screen_2();
+                        // soc.get_display().debug_screen_1();
                         // soc.io_bus.borrow().debug_eeprom();
                         return Ok(());
                     },
@@ -180,7 +180,7 @@ fn main() -> Result<(), String> {
     }
 }
 
-fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool) {
+fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool, u8) {
     let rom = std::fs::read(format!("{}.ws", game)).or_else(|_| {std::fs::read(format!("{}.wsc", game))}).unwrap();
     let footer = rom.last_chunk::<16>().unwrap();
     let color = footer[0x7] & 1 != 0;
@@ -203,9 +203,11 @@ fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool) {
         _ => panic!("Unknown mapper!"),
     };
 
+    let rom_info = footer[0xC] & 0x0C;
+
     // if mapper == Mapper::B_2003 {println!("Mapper 2003")}
 
-    (color, save, rom, mapper, sram)
+    (color, save, rom, mapper, sram, rom_info)
 }
 
 #[macro_export]

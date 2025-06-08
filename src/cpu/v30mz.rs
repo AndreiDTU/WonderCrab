@@ -536,9 +536,9 @@ impl V30MZ {
                     0 => self.inc(op.op1, op.mode, sub_op.extra),
                     1 => self.dec(op.op1, op.mode, sub_op.extra),
                     2 => self.call(op.op1, Mode::M16, sub_op.extra),
-                    3 => self.call(op.op1, Mode::M16, sub_op.extra),
+                    3 => self.call(op.op1, Mode::M32, sub_op.extra),
                     4 => self.branch_op(op.op1, Mode::M16, sub_op.extra),
-                    5 => self.branch_op(op.op1, Mode::M16, sub_op.extra),
+                    5 => self.branch_op(op.op1, Mode::M32, sub_op.extra),
                     6 => self.push_op(Operand::MEMORY, sub_op.extra),
                     7 => panic!("INVALID {:05X} {:02X} {}", self.get_pc_address(), op.code, op.name),
                     _ => unreachable!()
@@ -615,7 +615,7 @@ impl V30MZ {
 
     fn raise_exception(&mut self, vector: u8) {
         self.PC = self.PC.wrapping_add(self.pc_displacement);
-        // println!("Exception raised: vector={:02X}. Pushing PSW={:016b} PS={:04X}, PC={:04X}", vector, self.PSW.bits(), self.PS, self.PC);
+        if self.trace {println!("Exception raised: vector={:02X}. Pushing PSW={:016b} PS={:04X}, PC={:04X}", vector, self.PSW.bits(), self.PS, self.PC)}
         self.pc_displacement = 0;
 
         self.push(self.PSW.bits());
@@ -627,7 +627,7 @@ impl V30MZ {
         let vec_addr = (vector as u32) * 4;
 
         (self.PC, self.PS) = self.read_mem_32(vec_addr);
-        // println!("New values: PSW={:016b} PS={:04X}, PC={:04X}", self.PSW.bits(), self.PS, self.PC);
+        if self.trace {println!("New values: PSW={:016b} PS={:04X}, PC={:04X}", self.PSW.bits(), self.PS, self.PC)}
     }
 
     fn poll_interrupts(&mut self) -> bool {

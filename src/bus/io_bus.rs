@@ -278,7 +278,7 @@ impl IOBusConnection for IOBus {
 }
 
 impl IOBus {
-    pub fn new(cartridge: Rc<RefCell<Cartridge>>, keypad: Rc<RefCell<Keypad>>, eeprom: Option<Vec<u8>>, color: bool) -> Self {
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>, keypad: Rc<RefCell<Keypad>>, eeprom: Option<Vec<u8>>, color: bool, rom_info: u8) -> Self {
         let ieeprom = if color {EEPROM::new(vec![0; 0x800], 10)} else {EEPROM::new(vec![0; 128], 6)};
         
         let eeprom = if let Some(contents) = eeprom {
@@ -291,6 +291,7 @@ impl IOBus {
         } else {None};
         let mut bus = Self {ports: [0; 0x100], cartridge, keypad, eeprom, ieeprom};
         if color {bus.color_setup()};
+        bus.ports[0xA0] |= rom_info;
         bus
     }
 
@@ -387,6 +388,7 @@ impl IOBus {
         return Some(port);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn debug_eeprom(&self) {
         println!("IEEPROM {:#?}", self.ieeprom.contents);
         if let Some(eeprom) = &self.eeprom {

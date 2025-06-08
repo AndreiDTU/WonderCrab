@@ -522,12 +522,12 @@ impl Display {
     }
 
     pub fn debug_screen_1(&mut self) {
-        let element = self.screen_1_elements[1][11];
+        let element = self.screen_1_elements[0][0];
         println!("Element: {:#?}", element);
         let base = 0x4000 + (element.tile_idx as u32) * 32;
         println!("Reading tile from {:04X}", base);
-        println!("Tile: {:#?}", self.screen_1_tiles[1][11]);
-        println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PACKED_4BPP));
+        println!("Tile: {:#?}", self.screen_1_tiles[0][0]);
+        println!("Correct tile: {:#?}", self.read_tile(element.tile_idx, PaletteFormat::PLANAR_4BPP));
         println!("Palette RGB: {:#?}", self.get_color_palette(element.palette));
         println!("Scroll 1 x: {} y: {}", self.read_io(0x10), self.read_io(0x11));
     }
