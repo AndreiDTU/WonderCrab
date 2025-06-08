@@ -9,7 +9,7 @@ pub enum Mapper {
 }
 
 pub struct Cartridge {
-    sram: Vec<u8>,
+    pub(crate) sram: Vec<u8>,
     rom: Vec<u8>,
 
     mapper: Mapper,

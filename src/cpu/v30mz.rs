@@ -85,7 +85,7 @@ pub struct V30MZ {
     cycles: u8,
     base: u8,
 
-    trace: bool,
+    pub trace: bool,
 }
 
 impl MemBusConnection for V30MZ {

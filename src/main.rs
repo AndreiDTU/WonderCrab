@@ -1,10 +1,12 @@
-use std::{collections::HashMap, env, sync::{Arc, Mutex}, time::{Duration, Instant}};
+use std::{cell::RefCell, collections::HashMap, env, rc::Rc, sync::{Arc, Mutex}, time::{Duration, Instant}};
 
 use cartridge::Mapper;
 use keypad::Keys;
 use mimalloc::MiMalloc;
 use sdl2::{audio::{AudioCallback, AudioSpecDesired}, event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect};
 use soc::SoC;
+
+use crate::bus::io_bus::IOBus;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -57,9 +59,12 @@ fn main() -> Result<(), String> {
 
     let samples = Arc::new(Mutex::new(Vec::new()));
 
+    let mut global_color = false;
+
     let mut soc = if let Some(game) = game {
-        let (color, ram_content, rom, mapper, sram, rom_info) = parse_rom(game);
-        SoC::new(color, ram_content, rom, mapper, sram, trace, Arc::clone(&samples), mute, rom_info)
+        let (color, ram_content, ieeprom, eeprom, rom, mapper, sram, rom_info) = parse_rom(game);
+        global_color = color;
+        SoC::new(color, ram_content, ieeprom, eeprom, rom, mapper, sram, trace, Arc::clone(&samples), mute, rom_info)
     } else {SoC::test_build()};
 
     let sdl_context = sdl2::init()?;
@@ -139,6 +144,7 @@ fn main() -> Result<(), String> {
                         // for addr in 0x4340..=0x435F {println!("TILE: [{:04X}] = {:02X}", addr, soc.read_mem(addr))}
                         // soc.get_display().debug_screen_1();
                         // soc.io_bus.borrow().debug_eeprom();
+                        if let Some(game) = game {save_game(soc.io_bus, global_color, game)};
                         return Ok(());
                     },
                     Event::KeyDown { keycode, .. } => {
@@ -161,15 +167,19 @@ fn main() -> Result<(), String> {
                                     canvas.clear();
                                 }
                             }
+                            if let Some(Keycode::T) = keycode {
+                                soc.cpu.trace = !trace;
+                                soc.mute = !mute;
+                            }
                             if let Some(key) = key_map.get(&key) {
-                                soc.io_bus.borrow_mut().keypad.borrow_mut().set_key(*key, true);
+                                soc.io_bus.borrow_mut().set_key(*key, true);
                             }
                         }
                     }
                     Event::KeyUp { keycode, .. } => {
                         if let Some(key) = keycode {
                             if let Some(key) = key_map.get(&key) {
-                                soc.io_bus.borrow_mut().keypad.borrow_mut().set_key(*key, false);
+                                soc.io_bus.borrow_mut().set_key(*key, false);
                             }
                         }
                     }
@@ -180,7 +190,7 @@ fn main() -> Result<(), String> {
     }
 }
 
-fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool, u8) {
+fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Mapper, bool, u8) {
     let rom = std::fs::read(format!("{}.ws", game)).or_else(|_| {std::fs::read(format!("{}.wsc", game))}).unwrap();
     let footer = rom.last_chunk::<16>().unwrap();
     let color = footer[0x7] & 1 != 0;
@@ -195,7 +205,14 @@ fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool, u8) {
         0x50 => (0x2000, false),
         _ => panic!("Unknown save type!")
     };
-    let save = std::fs::read(format!("{}.sav", game)).or_else(|_| {Ok::<_, ()>(vec![0; ram_size as usize])}).unwrap();
+
+    let ieeprom_path = if color {"wsc.ieeprom"} else {"ws.ieeprom"};
+    let eeprom_path = format!("{}.eeprom", game);
+    let sram_path = format!("{}.sram", game);
+
+    let ieeprom = std::fs::read(ieeprom_path).or_else(|_| Ok::<_, ()>(Vec::new())).unwrap();
+    let eeprom = std::fs::read(eeprom_path).or_else(|_| Ok::<_, ()>(Vec::new())).unwrap();
+    let save = std::fs::read(sram_path).or_else(|_| {Ok::<_, ()>(vec![0; ram_size as usize])}).unwrap();
 
     let mapper = match footer[0xD] {
         0 => Mapper::B_2001,
@@ -207,7 +224,22 @@ fn parse_rom(game: &str) -> (bool, Vec<u8>, Vec<u8>, Mapper, bool, u8) {
 
     // if mapper == Mapper::B_2003 {println!("Mapper 2003")}
 
-    (color, save, rom, mapper, sram, rom_info)
+    (color, save, ieeprom, eeprom, rom, mapper, sram, rom_info)
+}
+
+fn save_game(io_bus: Rc<RefCell<IOBus>>, color: bool, game: &str) {
+    let local_io_bus = io_bus.borrow();
+    let ieeprom = &local_io_bus.ieeprom;
+    let eeprom = &local_io_bus.eeprom;
+    let sram = &local_io_bus.cartridge.borrow().sram;
+
+    let ieeprom_path = if color {"wsc.ieeprom"} else {"ws.ieeprom"};
+    let eeprom_path = format!("{}.eeprom", game);
+    let sram_path = format!("{}.sram", game);
+
+    std::fs::write(ieeprom_path, ieeprom.contents.clone()).unwrap();
+    if let Some(eeprom) = eeprom {std::fs::write(eeprom_path, eeprom.contents.clone()).unwrap()}
+    if !sram.is_empty() {std::fs::write(sram_path, sram.clone()).unwrap()}
 }
 
 #[macro_export]

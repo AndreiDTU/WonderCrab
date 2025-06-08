@@ -2,17 +2,18 @@ use std::{cell::RefCell, rc::Rc};
 
 use eeprom::EEPROM;
 
-use crate::{cartridge::Cartridge, display::PaletteFormat, keypad::Keypad};
+use crate::{cartridge::Cartridge, display::PaletteFormat, keypad::{Keypad, Keys}};
 
 mod eeprom;
 
 pub struct IOBus {
     ports: [u8; 0x100],
 
-    cartridge: Rc<RefCell<Cartridge>>,
-    pub(crate) keypad: Rc<RefCell<Keypad>>,
-    eeprom: Option<EEPROM>,
-    ieeprom: EEPROM
+    pub(crate) cartridge: Rc<RefCell<Cartridge>>,
+    pub(crate) eeprom: Option<EEPROM>,
+    pub(crate) ieeprom: EEPROM,
+
+    keypad: Keypad,
 }
 
 pub trait IOBusConnection {
@@ -85,7 +86,7 @@ impl IOBusConnection for IOBus {
 
             // Reading from KEY_SCAN queries the keypad
             0xB5 => {
-                self.ports[0xB5] | self.keypad.borrow().read_keys()
+                self.ports[0xB5] | self.keypad.read_keys()
             }
 
             // INT_CAUSE_CLEAR is write-only
@@ -188,10 +189,10 @@ impl IOBusConnection for IOBus {
 
             // Writing to KEY_SCAN polls the keypad and potentially interrupts
             0xB5 => {
-                let old_keys = self.keypad.borrow().read_keys();
-                self.ports[0xB5] = (self.ports[0xB5] & 0x0F) | (byte & 0x70);
-                self.keypad.borrow_mut().poll((byte & 0x70) >> 4);
-                if self.keypad.borrow().read_keys() & (!old_keys) != 0 {
+                let old_keys = self.ports[0xB5] & 0x0F;
+                self.keypad.poll((byte & 0x70) >> 4);
+                self.ports[0xB5] = (byte & 0x70) | self.keypad.read_keys();
+                if (self.ports[0xB5] & 0x0F) != old_keys {
                     // println!("Keys pressed!");
                     self.ports[0xB4] |= 0x02 & self.ports[0xB2];
                 }
@@ -278,8 +279,16 @@ impl IOBusConnection for IOBus {
 }
 
 impl IOBus {
-    pub fn new(cartridge: Rc<RefCell<Cartridge>>, keypad: Rc<RefCell<Keypad>>, eeprom: Option<Vec<u8>>, color: bool, rom_info: u8) -> Self {
-        let ieeprom = if color {EEPROM::new(vec![0; 0x800], 10)} else {EEPROM::new(vec![0; 128], 6)};
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>, ieeprom: Vec<u8>, eeprom: Option<Vec<u8>>, color: bool, rom_info: u8) -> Self {
+        let ieeprom = if ieeprom.is_empty() {
+            if color {
+                EEPROM::new(vec![0; 0x800], 10)
+            } else {
+                EEPROM::new(vec![0; 128], 6)
+            }
+        } else {
+            EEPROM::new(ieeprom, if color {10} else {6})
+        };
         
         let eeprom = if let Some(contents) = eeprom {
             let address_bits = match contents.len() {
@@ -289,7 +298,8 @@ impl IOBus {
             };
             Some(EEPROM::new(contents, address_bits))
         } else {None};
-        let mut bus = Self {ports: [0; 0x100], cartridge, keypad, eeprom, ieeprom};
+        
+        let mut bus = Self {ports: [0; 0x100], cartridge, keypad: Keypad::new(), eeprom, ieeprom};
         if color {bus.color_setup()};
         bus.ports[0xA0] |= rom_info;
         bus
@@ -319,6 +329,15 @@ impl IOBus {
 
     pub fn open_bus() -> u8 {
         0x90
+    }
+
+    pub fn set_key(&mut self, key: Keys, pressed: bool) {
+        self.keypad.set_key(key, pressed);
+        let old_keys = self.ports[0xB5];
+        self.ports[0xB5] |= self.keypad.read_keys();
+        if old_keys != self.ports[0xB5] {
+            self.ports[0xB4] |= 0x02 & self.ports[0xB2];
+        }
     }
 
     // Display functions

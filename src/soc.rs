@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc, sync::{Arc, Mutex}};
 
-use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA, keypad::Keypad, sound::Sound};
+use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, cartridge::{Cartridge, Mapper}, cpu::v30mz::V30MZ, display::display_control::Display, dma::DMA, sound::Sound};
 
 pub struct SoC {
-    cpu: V30MZ,
+    pub(super) cpu: V30MZ,
     dma: DMA,
     sound: Sound,
     display: Display,
@@ -18,7 +18,7 @@ pub struct SoC {
 
     lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>,
 
-    mute: bool,
+    pub(super) mute: bool,
 }
 
 impl MemBusConnection for SoC {
@@ -42,14 +42,13 @@ impl IOBusConnection for SoC {
 }
 
 impl SoC {
-    pub fn new(color: bool, ram_content: Vec<u8>, rom: Vec<u8>, mapper: Mapper, sram: bool, trace: bool, samples: Arc<Mutex<Vec<(u16, u16)>>>, mute: bool, rom_info: u8) -> Self {
+    pub fn new(color: bool, ram_content: Vec<u8>, ieeprom: Vec<u8>, eeprom: Vec<u8>, rom: Vec<u8>, mapper: Mapper, sram: bool, trace: bool, samples: Arc<Mutex<Vec<(u16, u16)>>>, mute: bool, rom_info: u8) -> Self {
         let (cartridge, eeprom) = if sram {
             (Rc::new(RefCell::new(Cartridge::new(mapper, ram_content, rom, sram))), None)
         } else {
-            (Rc::new(RefCell::new(Cartridge::new(mapper, Vec::new(), rom, false))), Some(ram_content))
+            (Rc::new(RefCell::new(Cartridge::new(mapper, Vec::new(), rom, false))), Some(eeprom))
         };
-        let keypad = Rc::new(RefCell::new(Keypad::new()));
-        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), Rc::clone(&keypad), eeprom, color, rom_info)));
+        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), ieeprom, eeprom, color, rom_info)));
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let mut cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), trace);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
@@ -108,9 +107,8 @@ impl SoC {
     }
     
     pub fn test_build() -> Self {
-        let keypad = Rc::new(RefCell::new(Keypad::new()));
         let cartridge = Rc::new(RefCell::new(Cartridge::test_build()));
-        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), Rc::clone(&keypad), None, false, 0)));
+        let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), Vec::new(), None, false, 0)));
         let mem_bus = Rc::new(RefCell::new(MemBus::test_build(Rc::clone(&io_bus), Rc::clone(&cartridge))));
         let cpu = V30MZ::new(Rc::clone(&mem_bus), Rc::clone(&io_bus), false);
         let dma = DMA::new(Rc::clone(&mem_bus), Rc::clone(&io_bus));
