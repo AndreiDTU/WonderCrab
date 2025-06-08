@@ -46,7 +46,7 @@ impl SoC {
         let (cartridge, eeprom) = if sram {
             (Rc::new(RefCell::new(Cartridge::new(mapper, ram_content, rom, sram))), None)
         } else {
-            (Rc::new(RefCell::new(Cartridge::new(mapper, Vec::new(), rom, false))), Some(eeprom))
+            (Rc::new(RefCell::new(Cartridge::new(mapper, Vec::new(), rom, false))), if eeprom.len() > 0 {Some(eeprom)} else {Some(ram_content)})
         };
         let io_bus = Rc::new(RefCell::new(IOBus::new(Rc::clone(&cartridge), ieeprom, eeprom, color, rom_info)));
         let mem_bus = Rc::new(RefCell::new(MemBus::new(Rc::clone(&io_bus), Rc::clone(&cartridge))));
