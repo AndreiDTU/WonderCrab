@@ -167,10 +167,15 @@ fn main() -> Result<(), String> {
                                     canvas.clear();
                                 }
                             }
+                            // Tracing makes the framerate unplayable,
+                            // this is disabled to make sure the user
+                            // doesn't press it by accident
+                            /*
                             if let Some(Keycode::T) = keycode {
                                 soc.cpu.trace = !trace;
                                 soc.mute = !mute;
                             }
+                            */
                             if let Some(key) = key_map.get(&key) {
                                 soc.io_bus.borrow_mut().set_key(*key, true);
                             }
