@@ -1,15 +1,30 @@
+/// EEPROM struct
+/// 
+/// IEEPROMs differed in size between 1Kbit on mono models to 16 Kbit on color models
+/// 
+/// Cartridge EEPROMs differed between 1, 8 and 16 Kbits
 pub struct EEPROM {
+    /// EEPROM contents as a byte vector
     pub contents: Vec<u8>,
+    /// The data written to the EEPROM's data port
     input: u16,
+    /// The data read from the EEPROM's data port
     output: u16,
 
+    /// The EEPROM's control port
     comm: u16,
+    /// The size of the EEPROM's addressing space
     address_bits: u8,
 
+    /// Whether or not writes are enabled on this EEPROM
     write_enabled: bool,
 }
 
 impl EEPROM {
+    /// Creates new EEPROM object
+    /// 
+    /// Requires that the contents and addressing space are provided.
+    /// `write_enabled` is initialized as `true`, all other values initialized to 0.
     pub fn new(contents: Vec<u8>, address_bits: u8) -> Self {
         Self {
             contents,
@@ -21,14 +36,17 @@ impl EEPROM {
         }
     }
 
+    /// Returns the EEPROM's output
     pub fn read_data(&self) -> u16 {
         self.output
     }
 
+    /// Writes to the EEPROM's input
     pub fn write_data(&mut self, data: u16) {
         self.input = data;
     }
 
+    /// Writes to the EEPROM's control register and potentially starts an operation
     pub fn write_comm(&mut self, comm: u16) {
         if comm >> (self.address_bits + 3) != 0 {return}
         self.comm = comm;
@@ -50,6 +68,20 @@ impl EEPROM {
         }
     }
 
+    /// Executes a given opcode between 1 and 3
+    /// 
+    /// The simple operations of the EEPROM are as follows
+    /// 
+    /// | code | mnemonic |
+    /// |------|----------|
+    /// | 1    | WRITE    |
+    /// | 2    | READ     |
+    /// | 3    | ERASE    |
+    /// 
+    /// # Panics
+    /// When any other opcode is provided.
+    /// 
+    /// Opcode 0 is a prefix for the 4-bit opcodes, but those are instead expected to invoke `execute_sub_op` with their sub-opcode.
     fn execute_op(&mut self, address: u16, opcode: u8) {
         match opcode {
             // WRITE
@@ -75,6 +107,19 @@ impl EEPROM {
         }
     }
 
+    /// Executes a given sub-opcode between 0 and 3
+    /// 
+    /// The 4-bit operations of the EEPROM are as follows
+    /// 
+    /// | code | mnemonic |
+    /// |------|----------|
+    /// | 0    | EWDS     |
+    /// | 1    | WRAL     |
+    /// | 2    | ERAL     |
+    /// | 3    | EWEN     |
+    /// 
+    /// # Panics
+    /// When any other opcode is provided.
     fn execute_sub_op(&mut self, opcode: u8) {
         match opcode {
             // EWDS

@@ -2,28 +2,65 @@ use std::{cell::RefCell, rc::Rc};
 
 use eeprom::EEPROM;
 
-use crate::{cartridge::Cartridge, display::PaletteFormat, keypad::{Keypad, Keys}};
+use crate::{bus::io_bus::keypad::{Keypad, Keys}, cartridge::Cartridge, display::PaletteFormat};
 
+/// IEEPROM and cartridge EEPROM
+/// 
+/// The console's EEPROM was mostly used to store certain information about the owner,
+/// with only a small section being rewrittable by the games themselves.
+/// 
+/// Cartridges with EEPROM save files typically used them for small amounts of data such as high score records.
 mod eeprom;
+/// Module used for inputs
+/// 
+/// The keypad represents all of the system's built-in buttons.
+pub(crate) mod keypad;
 
+/// The WonderSwan's shared I/O bus
 pub struct IOBus {
+    /// This is an array containing the byte at each port
     ports: [u8; 0x100],
 
+    /// A reference to the cartridge, shared with the memory bus
     pub(crate) cartridge: Rc<RefCell<Cartridge>>,
+    /// The cartridge's EEPROM, is none in case the cartridge instead contains SRAM
     pub(crate) eeprom: Option<EEPROM>,
+    /// The system's internal EEPROM
     pub(crate) ieeprom: EEPROM,
 
+    /// The console's built-in keys
     keypad: Keypad,
 }
 
+/// Trait shared by objects which are connected to the I/O bus
+///
+/// This trait is intended to be implemented on any struct containing a reference to the I/O bus.
+/// 
+/// However, structs which can communicate exclusively via the I/O bus are instead expected
+/// to be contained as fields of the I/O bus.
 pub trait IOBusConnection {
+    /// Returns the byte at the port indicated by the address
+    /// 
+    /// Reading certain ports can have side effects.
+    /// 
+    /// Some ports do not exist and return undefined values, some ports also have undefined bits.
+    /// 
+    /// The addressing space for ports is also larger than the amount of existing ports so some addresses are mirrored and others are invalid.
     fn read_io(&mut self, addr: u16) -> u8;
+    /// Writes a byte to the address
+    /// 
+    /// Some ports or bits of certain ports cannot be written to.
+    /// 
+    /// Writing to some ports can have side effects.
+    /// 
+    /// The addressing space for ports is also larger than the amount of existing ports so some addresses are mirrored and others are invalid.
     fn write_io(&mut self, addr: u16, byte: u8);
 
+    /// Reads the byte at the address provided and the following address, returns a tuple containing both bytes
     fn read_io_16(&mut self, addr: u16) -> (u8, u8) {
         (self.read_io(addr), self.read_io(addr.wrapping_add(1)))
     }
-
+    /// Writes the word in little-endian form to the address provided and the following one
     fn write_io_16(&mut self, addr: u16, word: u16) {
         let bytes = word.to_le_bytes();
         self.write_io(addr, bytes[0]);
@@ -291,6 +328,9 @@ impl IOBusConnection for IOBus {
 }
 
 impl IOBus {
+    /// Returns a new I/O bus object
+    /// 
+    /// Requires the IEEPROM, an optional cartridge EEPROM, a boolean indicating whether to run in color mode, info about the ROM and a shared reference to the cartridge.
     pub fn new(cartridge: Rc<RefCell<Cartridge>>, ieeprom: Vec<u8>, eeprom: Option<Vec<u8>>, color: bool, rom_info: u8) -> Self {
         let ieeprom = if ieeprom.is_empty() {
             if color {
@@ -317,10 +357,12 @@ impl IOBus {
         bus
     }
 
+    /// Returns whether or not the console is in color mode as indicated by port 0x60
     pub fn color_mode(&mut self) -> bool {
         self.ports[0x60] >> 7 != 0
     }
 
+    /// Returns the format of the palette data as indicated by port 0x60
     pub fn palette_format(&mut self) -> PaletteFormat {
         if !self.color_mode() {
             PaletteFormat::PLANAR_2BPP
@@ -334,15 +376,21 @@ impl IOBus {
         }
     }
 
+    /// Sets the values of ports 0x60 and 0xA0 to what would be expected in a WonderSwan Color model with color mode enabled
     pub fn color_setup(&mut self) {
         self.ports[0x60] = 0x80;
         self.ports[0xA0] = 0x86;
     }
 
+    /// Returns 0x90 to simulate the open bus behaviour of the monochrome WonderSwan.
+    /// 
+    /// It is its own separate function in order to make it easier to potentially simulate a more accurate version of
+    /// WonderSwan Color and WonderCrystal open bus behaviour in the future.
     pub fn open_bus() -> u8 {
         0x90
     }
 
+    /// Sets the state of a key to be either pressed or unpressed
     pub fn set_key(&mut self, key: Keys, pressed: bool) {
         self.keypad.set_key(key, pressed);
         let old_keys = self.ports[0xB5];
@@ -353,6 +401,11 @@ impl IOBus {
     }
 
     // Display functions
+
+    /// Called by the display controller to announce its current scanline
+    /// 
+    /// # Interrupt
+    /// Can potentially trigger the DISPLINE interrupt if enabled and the scanline matches port 0x03
     pub(crate) fn set_lcd_line(&mut self, line: u8) {
         self.ports[0x02] = line;
         if self.ports[0x02] == self.ports[0x03] {
@@ -360,6 +413,10 @@ impl IOBus {
         }
     }
 
+    /// Called by the display controller to announce that it has finished rendering a frame
+    /// 
+    /// # Interrupt
+    /// Can trigger the VBLANK and VBLANK_COUNTER interrupts if enabled and their conditions are met
     pub (crate) fn vblank(&mut self) {
         self.ports[0xB4] |= (1 << 6) & self.ports[0xB2];
         if self.ports[0xA2] & 4 != 0 {
@@ -380,6 +437,10 @@ impl IOBus {
         }
     }
 
+    /// Called by the display controller to announce it has finished rendering a scanline
+    /// 
+    /// # Interrupt
+    /// Can trigger the HBLANK_COUNTER interrupt if enabled and is condition is met
     pub (crate) fn hblank(&mut self) {
         if self.ports[0xA2] & 1 != 0 {
             let counter = u16::from_le_bytes([self.ports[0xA8], self.ports[0xA9]]);
@@ -400,12 +461,21 @@ impl IOBus {
     }
 
     // Sound functions
+
+    /// Called by the sound chip to announce the state of the LSFR
+    /// 
+    /// This port can potentially be read by the CPU as a form of pseudo-RNG
     pub(crate) fn set_lsfr(&mut self, lsfr: u16) {
         let bytes = lsfr.to_le_bytes();
         self.write_io(0x92, bytes[0]);
         self.write_io(0x93, bytes[1]); 
     }
 
+    /// Transforms the 16-bit address received by the bus into an 8-bit index
+    /// 
+    /// # Returns
+    /// - None, if the address is invalid
+    /// - Some(port), the port mirrored into the valid addressing space
     fn check_open_bus(addr: u16) -> Option<u8> {
         if addr & 0x0100 != 0 {
             return None;
@@ -420,6 +490,7 @@ impl IOBus {
     }
 
     #[allow(dead_code)]
+    #[doc(hidden)]
     pub(crate) fn debug_eeprom(&self) {
         println!("IEEPROM {:#?}", self.ieeprom.contents);
         if let Some(eeprom) = &self.eeprom {

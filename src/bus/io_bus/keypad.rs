@@ -1,6 +1,7 @@
 use bitflags::bitflags;
 
 bitflags! {
+    /// Bitflags representing each button
     #[derive(Copy, Clone, Debug)]
     pub struct Keys: u16 {
         const Y4 = 0x0800;
@@ -19,16 +20,24 @@ bitflags! {
     }
 }
 
+/// Contains the state of the console's built-in buttons
 pub struct Keypad {
+    /// Describes which buttons are currently pressed using a `u16` representing bitflags referring to each button
     state: Keys,
+    /// Contains the value emitted to the key scan I/O port
     keys: u8,
 }
 
 impl Keypad {
+    /// Creates a new object of this type with both fields initialized to 0
     pub fn new() -> Self {
         Self{state: Keys::from_bits_truncate(0), keys: 0}
     }
 
+    /// This polls the keypad asking which keys are currently pressed.
+    /// 
+    /// The poll parameter is expected to contain bits 4-6 of the key scan I/O port.
+    /// These are then used to update the keys field of the struct.
     pub fn poll(&mut self, poll: u8) {
         let action = if poll & 0x04 != 0 {0x0F} else {0x00};
         let x =      if poll & 0x02 != 0 {0x0F} else {0x00};
@@ -45,11 +54,13 @@ impl Keypad {
         self.keys = (group.0 & action) | (group.1 & x) | (group.2 & y);
     }
 
+    /// Returns the value of the `keys` field
     pub fn read_keys(&self) -> u8 {
         // println!("{:04b}", self.keys);
         self.keys
     }
 
+    #[doc(hidden)]
     pub(super) fn set_key(&mut self, key: Keys, pressed: bool) {
         self.state.set(key, pressed);
     }
