@@ -3,6 +3,9 @@ use crate::cpu::parity;
 use super::*;
 
 impl V30MZ {
+    /// ADD instruction
+    /// 
+    /// op1 <- op1 + op2
     pub fn add(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         // Adds the two operands. The result is stored in the left operand.
         match mode {
@@ -40,6 +43,11 @@ impl V30MZ {
         }
     }
     
+    /// ADDC instruction
+    /// 
+    /// op1 <- op1 + op2 (+1 more if carry flag was set beforehand)
+    /// 
+    /// Intel name: ADC
     pub fn addc(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         // Adds the two operands, plus 1 more if the carry flag (CY) was set.
         // The result is stored in the left operand. 
@@ -82,6 +90,11 @@ impl V30MZ {
         }
     }
 
+    /// ADJ4A instruction
+    /// 
+    /// Used to adjust the result of an ADD or ADDC instruction being used on a two-digit BCD value
+    /// 
+    /// Intel name: DAA
     pub fn adj4a(&mut self) {
         let mut AL = self.AW as u8;
         if AL & 0x0F > 0x09 || self.PSW.contains(CpuStatus::AUX_CARRY) {
@@ -99,6 +112,11 @@ impl V30MZ {
         self.AW = swap_l(self.AW, AL);
     }
 
+    /// ADJ4S
+    /// 
+    /// Used to adjust the result of a SUB or SUBC instruction being used on a two-digit BCD value
+    /// 
+    /// Intel name: DAS
     pub fn adj4s(&mut self) {
         let mut AL = self.AW as u8;
         if AL & 0x0F > 0x09 || self.PSW.contains(CpuStatus::AUX_CARRY) {
@@ -116,6 +134,11 @@ impl V30MZ {
         self.AW = swap_l(self.AW, AL);
     }
 
+    /// ADJBA instruction
+    /// 
+    /// Used to adjust the result of an ADD or ADDC instruction being used on a one-digit BCD value
+    /// 
+    /// Intel name: AAA
     pub fn adjba(&mut self) {
         let mut AL = self.AW as u8;
         if AL & 0x0F > 0x0F || self.PSW.contains(CpuStatus::AUX_CARRY) {
@@ -138,6 +161,11 @@ impl V30MZ {
         self.AW = swap_l(self.AW, AL);
     }
 
+    /// ADJBS instruction
+    /// 
+    /// Used to adjust the result of an SUB or SUBC instruction being used on a one-digit BCD value
+    /// 
+    /// Intel name: AAS
     pub fn adjbs(&mut self) {
         let mut AL = self.AW as u8;
         if AL & 0x0F > 0x0F || self.PSW.contains(CpuStatus::AUX_CARRY) {
@@ -160,6 +188,9 @@ impl V30MZ {
         self.AW = swap_l(self.AW, AL);
     }
 
+    /// CMP instruction
+    /// 
+    /// Performs a subtraction between the operands, sets the flags and discards the result
     pub fn cmp(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -191,6 +222,9 @@ impl V30MZ {
         }
     }
 
+    /// DEC instruction
+    /// 
+    /// Decrements the operand by 1
     pub fn dec(&mut self, op: Operand, mode: Mode, extra: u8) {
         let carry = self.PSW.contains(CpuStatus::CARRY);
         match op {
@@ -224,6 +258,21 @@ impl V30MZ {
         self.PSW.set(CpuStatus::CARRY, carry);
     }
 
+    /// DIV instruction (signed division)
+    /// 
+    /// 8-bit:
+    /// - `AH <- AW % mem`
+    /// - `AL <- AW / mem`
+    /// 
+    /// 16-bit:
+    /// - `DW <- DW,AW % mem`
+    /// - `AW <- DW,AW / mem`
+    /// 
+    /// # Exception
+    /// 
+    /// Raises an exception with vector 0 if the divider is 0 if the quotient doesn't fit
+    /// 
+    /// Intel name: IDIV
     pub fn div(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -302,6 +351,21 @@ impl V30MZ {
         }
     }
 
+    /// DIVU instruction (unsigned division)
+    /// 
+    /// 8-bit:
+    /// - `AH <- AW % mem`
+    /// - `AL <- AW / mem`
+    /// 
+    /// 16-bit:
+    /// - `DW <- DW,AW % mem`
+    /// - `AW <- DW,AW / mem`
+    /// 
+    /// # Exception
+    /// 
+    /// Raises an exception with vector 0 if the divider is 0 if the quotient doesn't fit
+    /// 
+    /// Intel name: DIV
     pub fn divu(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -370,6 +434,9 @@ impl V30MZ {
         }
     }
 
+    /// INC instruction
+    /// 
+    /// Increments operand by 1
     pub fn inc(&mut self, op: Operand, mode: Mode, extra: u8) {
         let carry = self.PSW.contains(CpuStatus::CARRY);
         match op {
@@ -403,6 +470,15 @@ impl V30MZ {
         self.PSW.set(CpuStatus::CARRY, carry);
     }
 
+    /// MUL instruction (signed multiplication)
+    /// 
+    /// 3-operand: `register <- memory * immediate`
+    /// 
+    /// 16-bit: `DW,AW *= memory (double word)`
+    /// 
+    /// 8-bit: `AW *= memory (word)`
+    /// 
+    /// Intel name: IMUL
     pub fn mul(&mut self, op3: Option<Operand>, mode: Mode, extra: u8) {
         match op3 {
             None => {
@@ -453,6 +529,13 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::AUX_CARRY);
     }
 
+    /// MULU instruction (unsigned multiplication)
+    /// 
+    /// 16-bit: `DW,AW <- AW * memory (word)`
+    /// 
+    /// 8-bit: `AW <- AW * memory (byte)`
+    /// 
+    /// Intel name: MUL
     pub fn mulu(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -480,6 +563,9 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::AUX_CARRY);
     }
 
+    /// NEG instruction
+    /// 
+    /// `mem <- 0 - mem`
     pub fn neg(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -510,6 +596,13 @@ impl V30MZ {
         }
     }
 
+    /// CVTBD instruction (8-bit unsigned division)
+    /// 
+    /// `AH <- AL / imm8`
+    /// 
+    /// `AL <- AL % imm8`
+    /// 
+    /// Intel name: AAM
     pub fn cvtbd(&mut self) {
         let src = self.current_op[1];
         if src == 0 {
@@ -530,6 +623,13 @@ impl V30MZ {
         self.AW = swap_l(self.AW, AL);
     }
 
+    /// CVTDB instruction (8-bit unsigned multiplication)
+    /// 
+    /// `AL <- AH * imm8`
+    /// 
+    /// `AH <- 0`
+    /// 
+    /// Intel name: AAD
     pub fn cvtdb(&mut self) {
         let src = self.current_op[1];
 
@@ -542,6 +642,9 @@ impl V30MZ {
         self.update_flags_add_8(AL as u16, mul as u16, result, 0);
     }
 
+    /// SUB instruction
+    /// 
+    /// op1 <- op1 - op2
     pub fn sub(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         // Subtracts the two operands. The result is stored in the left operand.
         match mode {
@@ -577,6 +680,11 @@ impl V30MZ {
         }
     }
 
+    /// SUB instruction
+    /// 
+    /// op1 <- op1 - op2
+    /// 
+    /// Intel name: SBC
     pub fn subc(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         // Subtracts the two operands. The result is stored in the left operand.
         match mode {

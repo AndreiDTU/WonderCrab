@@ -2,60 +2,79 @@ use once_cell::sync::Lazy;
 
 use super::*;
 
+/// An opcode as identified by its first byte
 #[derive(Debug, Clone)]
 pub struct OpCode {
-    pub code: u8,      // First byte
-    pub name: String,  // Mnemonic
-    pub op1:  Operand, // Destination
-    pub op2:  Operand, // Source
-    pub mode: Mode,    // Amount of bits to be read
-
-    pub op3:  Option<Operand>, // Third source
-
-    pub cycles: u8, // Min cycles
-    pub extra: u8,  // Extra cycles (for block operations this represents cycles per rep)
-}
-
-#[derive(Debug)]
-pub struct SubOpCode {
+    /// First byte
     pub code: u8,
+    /// Mnemonic
     pub name: String,
-    pub mode: Option<Mode>,
+    /// Destination
+    pub op1:  Operand,
+    /// Source
+    pub op2:  Operand,
+    /// Instruction's operating mode
+    pub mode: Mode,
 
+    /// Optional third operand
+    pub op3:  Option<Operand>,
+
+    /// Min cycles
     pub cycles: u8,
+    /// Extra cycles spent if the instruction contains a mod/r/m byte representing an offset
+    /// 
+    /// In the case of block operations actually represents the amount of cycles spent when rep is enabled
     pub extra: u8,
 }
 
+/// A sub-opcode, as identified from bits 3-5 of the second byte
+#[derive(Debug)]
+pub struct SubOpCode {
+    /// Bits 3-5 of the second byte
+    pub code: u8,
+    /// Mnemonic
+    pub name: String,
+    /// Operating mode, if `None` then it means the operating mode is decided by the first byte
+    pub mode: Option<Mode>,
+
+    /// Min cycles
+    pub cycles: u8,
+    /// Extra cycles spent if the instruction contains a mod/r/m byte representing an offset
+    pub extra: u8,
+}
+
+#[doc(hidden)]
 impl OpCode {
-    pub fn one_byte(code: u8, name: &str, op1: Operand, op2: Operand, mode: Mode, cycles: u8, extra: u8) -> Self {
+    fn one_byte(code: u8, name: &str, op1: Operand, op2: Operand, mode: Mode, cycles: u8, extra: u8) -> Self {
         Self {code, name: name.to_string(), op1, op2, mode, op3: None, cycles, extra}
     }
 
-    pub fn three_term(code: u8, name: &str, op1: Operand, op2: Operand, op3: Operand, mode: Mode, cycles: u8, extra: u8) -> Self {
+    fn three_term(code: u8, name: &str, op1: Operand, op2: Operand, op3: Operand, mode: Mode, cycles: u8, extra: u8) -> Self {
         Self {code, name: name.to_string(), op1, op2, mode, op3: Some(op3), cycles, extra}
     }
 
-    pub fn invalid(code: u8) -> Self {
+    fn invalid(code: u8) -> Self {
         Self {code, name: "INV".to_string(), op1: Operand::NONE, op2: Operand::NONE, mode: Mode::M16, op3: None, cycles: 1, extra: 0}
     }
 
-    pub fn two_byte(code: u8, op1: Operand, op2: Operand, mode: Mode) -> Self {
+    fn two_byte(code: u8, op1: Operand, op2: Operand, mode: Mode) -> Self {
         Self {code, name: "TWO".to_string(), op1, op2, mode, op3: None, cycles: 0, extra: 0}
     }
 
-    pub fn fpo1(code: u8) -> Self {
+    fn fpo1(code: u8) -> Self {
         Self {code, name: "FPO1".to_string(), op1: Operand::NONE, op2: Operand::MEMORY, mode: Mode::M16, op3: None, cycles: 1, extra: 0}
     }
 
-    pub fn two_byte_with_cycles(code: u8, op1: Operand, op2: Operand, mode: Mode, cycles: u8, extra: u8) -> Self {
+    fn two_byte_with_cycles(code: u8, op1: Operand, op2: Operand, mode: Mode, cycles: u8, extra: u8) -> Self {
         Self {code, name: "TWO".to_string(), op1, op2, mode, op3: None, cycles, extra}
     }
 
-    pub fn nop(code: u8) -> Self {
+    fn nop(code: u8) -> Self {
         Self {code, name: "NOP".to_string(), op1: Operand::NONE, op2: Operand::NONE, mode: Mode::M16, op3: None, cycles: 1, extra: 0}
     }
 }
 
+#[doc(hidden)]
 impl SubOpCode {
     pub fn normal(code: u8, name: &str, cycles: u8, extra: u8) -> Self {
         Self {code, name: name.to_string(), mode: None, cycles, extra}
@@ -66,6 +85,7 @@ impl SubOpCode {
     }
 }
 
+/// A full list of instructions as identified by their first byte
 pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
     vec![
         OpCode::one_byte(0x00, "ADD",     Operand::MEMORY,      Operand::REGISTER,    Mode::M8,  1,  2),
@@ -358,7 +378,7 @@ pub static CPU_OP_CODES: Lazy<Vec<OpCode>> = Lazy::new(|| {
     ]
 });
 
-// 0x80 - 0x83
+/// The immediate group, contains instructions whose first byte is 0x80 - 0x83
 pub static IMMEDIATE_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "ADD",  1,  2),
@@ -372,7 +392,7 @@ pub static IMMEDIATE_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     ]
 });
 
-// 0xC0, 0xC1, 0xD0 - 0xD3
+/// The shift group, contains instructions whose first byte is 0xC0, 0xC1, 0xD0 - 0xD3
 pub static SHIFT_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "ROL",  0, 0), // These operations base
@@ -386,7 +406,7 @@ pub static SHIFT_GROUP: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     ]
 });
 
-// 0xF6, 0xF7
+/// Group one, contains instructions whose first byte is 0xF6, 0xF7
 pub static GROUP_1: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "TEST", 1,  1),
@@ -400,7 +420,7 @@ pub static GROUP_1: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     ]
 });
 
-// 0xFE, 0xFF
+/// Group two, contains instructions whose first byte is 0xFE, 0xFF
 pub static GROUP_2: Lazy<Vec<SubOpCode>> = Lazy::new(|| {
     vec![
         SubOpCode::normal(0b000, "INC", 1,  2),

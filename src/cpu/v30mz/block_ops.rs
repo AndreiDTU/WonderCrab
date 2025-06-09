@@ -3,6 +3,11 @@ use crate::{bus::{io_bus::IOBusConnection, mem_bus::MemBusConnection}, cpu::{swa
 use super::{CpuStatus, V30MZ};
 
 impl V30MZ {
+    /// CMPBK instruction
+    /// 
+    /// Updates the flags according to `[IX] - [IY]` and discards the result.
+    /// 
+    /// Intel name: CMPS
     pub fn cmpbk(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr_x = self.get_physical_address(self.IX, self.DS0);
         let addr_y = self.apply_segment(self.IY, self.DS1);
@@ -41,6 +46,11 @@ impl V30MZ {
         self.cycles = self.base;
     }
 
+    /// CMPM instruction
+    /// 
+    /// Updates the flags according to `AW - [IY]` and discards the result.
+    /// 
+    /// Intel name: SCAS
     pub fn cmpm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.apply_segment(self.IY, self.DS1);
         match mode {
@@ -68,6 +78,11 @@ impl V30MZ {
         self.cycles = self.base;
     }
 
+    /// INM instruction
+    /// 
+    /// Reads the I/O port indicated by `DW` into `[IY]`
+    /// 
+    /// Intel name: INS
     pub fn inm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.apply_segment(self.IY, self.DS1);
         match mode {
@@ -91,6 +106,11 @@ impl V30MZ {
         self.cycles = self.base;
     }
 
+    /// LDM instruction
+    /// 
+    /// `acc <- [IX]`
+    /// 
+    /// Intel name: LODS
     pub fn ldm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.get_physical_address(self.IX, self.DS0);
         match mode {
@@ -110,6 +130,11 @@ impl V30MZ {
         self.cycles = self.base;
     }
 
+    /// MOVBK instruction
+    /// 
+    /// `[IY] <- [IX]`
+    /// 
+    /// Intel name: MOVS
     pub fn movbk(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr_x = self.get_physical_address(self.IX, self.DS0);
         let addr_y = self.apply_segment(self.IY, self.DS1);
@@ -134,6 +159,11 @@ impl V30MZ {
         self.cycles = self.base;
     }
 
+    /// OUTM instruction
+    /// 
+    /// Writes the value at `[IX]` into the I\O port indicated by `DW`
+    /// 
+    /// Intel name: OUTS
     pub fn outm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.get_physical_address(self.IX, self.DS0);
         match mode {
@@ -156,6 +186,11 @@ impl V30MZ {
         self.cycles = self.base;
     }
 
+    /// STM instruction
+    /// 
+    /// `[IY] <- acc`
+    /// 
+    /// Intel name: STOS
     pub fn stm(&mut self, mode: Mode, cycles: u8, rep_cycles: u8) {
         let addr = self.apply_segment(self.IY, self.DS1);
         match mode {
@@ -172,6 +207,7 @@ impl V30MZ {
         self.cycles = self.base;
     }
 
+    /// Updates the provided in the index parameter based on the mode parameter and the direction flag
     fn update_block_index(&mut self, mode: Mode, index: u16) -> u16 {
         match (self.PSW.contains(CpuStatus::DIRECTION), mode) {
             (false, Mode::M8) => index.wrapping_add(1),

@@ -3,6 +3,7 @@ use crate::cpu::parity;
 use super::*;
 
 impl V30MZ {
+    /// Fills the CPU's `current_op` field and returns the opcode
     pub fn allocate_instruction(&mut self) -> &OpCode {
         fn allocate_mod_rm(mod_rm: u8) -> u8 {
             let mode = mod_rm >> 6;
@@ -83,14 +84,17 @@ impl V30MZ {
         op
     }
 
+    /// Get the last byte of the instruction
     pub fn get_imm8(&mut self) -> u8 {
         *self.current_op.last().unwrap()
     }
 
+    /// Get the last word of the instruction (low-byte first)
     pub fn get_imm16(&mut self) -> u16 {
         u16::from_le_bytes(*self.current_op.last_chunk().unwrap())
     }
 
+    /// Branch if the condition is true
     pub(super) fn branch(&mut self, cond: bool) {
         // println!();
         // println!("Branch address before: {:05X}", self.get_pc_address());
@@ -104,6 +108,7 @@ impl V30MZ {
         // println!()
     }
 
+    /// Update flags for an 8-bit subtraction
     pub fn update_flags_sub_8(&mut self, a: u8, b: u8, res: u8, carry: u8) {
         let old_sign = a & 0x80;
         let new_sign = res & 0x80;
@@ -116,6 +121,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F || (a & 0x0F) - (b & 0x0F) < carry);
     }
 
+    /// Update flags for a 16-bit subtraction
     pub fn update_flags_sub_16(&mut self, a: u16, b: u16, res: u16, carry: u16) {
         let old_sign = a & 0x8000;
         let new_sign = res & 0x8000;
@@ -128,6 +134,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::AUX_CARRY, a & 0x0F < b & 0x0F || (a & 0x0F) - (b & 0x0F) < carry);
     }
 
+    /// Update flags for an 8-bit addition
     pub fn update_flags_add_8(&mut self, a: u16, b: u16, res: u16, carry: u16) {
         let sign = res & 0x80;
 
@@ -139,6 +146,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) + carry > 0xF);
     }
 
+    /// Update flags for a 16-bit addition
     pub fn update_flags_add_16(&mut self, a: u32, b: u32, res: u32, carry: u32) {
         let sign = res & 0x8000;
 
@@ -150,6 +158,7 @@ impl V30MZ {
         self.PSW.set(CpuStatus::AUX_CARRY, (a & 0xF) + (b & 0xF) + carry > 0xF);
     }
 
+    /// Update flags for an 8-bit bitwise operation
     pub fn update_flags_bitwise_8(&mut self, res: u8) {
         self.PSW.set(CpuStatus::ZERO, res == 0);
         self.PSW.set(CpuStatus::SIGN, res & 0x80 != 0);
@@ -160,6 +169,7 @@ impl V30MZ {
 
     }
 
+    /// Update flags for a 16-bit bitwise operation
     pub fn update_flags_bitwise_16(&mut self, res: u16) {
         self.PSW.set(CpuStatus::ZERO, res == 0);
         self.PSW.set(CpuStatus::SIGN, res & 0x8000 != 0);
@@ -170,6 +180,7 @@ impl V30MZ {
 
     }
 
+    /// Get source for rotation operations
     pub fn get_rot_src(&mut self, code: u8) -> u8 {
         // The src is always one byte
         return match code & 0xFE {
@@ -180,6 +191,7 @@ impl V30MZ {
         } & 0x1F
     }
 
+    /// Push word to the stack
     pub fn push(&mut self, src: u16) {
         self.SP = self.SP.wrapping_sub(2);
         let addr = self.get_stack_address();
@@ -187,12 +199,14 @@ impl V30MZ {
         // if src == old_SP {println!("new SP = {:04X}", self.SP)}
     }
 
+    /// Pop word from the stack
     pub fn pop(&mut self) -> u16 {
         let addr = self.get_stack_address();
         self.SP = self.SP.wrapping_add(2);
         self.read_mem_16(addr)
     }
 
+    /// Load a register from an immediate operand
     pub fn load_register_immediate(&mut self, mode: Mode) {
         match mode {
             Mode::M8 => {
@@ -223,6 +237,7 @@ impl V30MZ {
         }
     }
 
+    /// Resolve a 16-bit source
     pub fn resolve_src_16(&mut self, op: Operand, extra: u8) -> u16 {
         match op {
             Operand::MEMORY => {
@@ -253,6 +268,7 @@ impl V30MZ {
         }
     }
 
+    /// Resolve an 8-bit source
     pub fn resolve_src_8(&mut self, op: Operand, extra: u8) -> u8 {
         match op {
             Operand::MEMORY => self.resolve_mem_src_8(self.current_op[1], extra),
@@ -270,6 +286,7 @@ impl V30MZ {
         }
     }
 
+    /// Resolve a 32-bit memory operand
     pub fn resolve_mem_src_32(&mut self, byte: u8, extra: u8) -> (u16, u16) {
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16, extra);
 
@@ -282,6 +299,7 @@ impl V30MZ {
         }
     }
 
+    /// Resolve a 16-bit memory operand
     pub fn resolve_mem_src_16(&mut self, byte: u8, extra: u8) -> u16 {
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16, extra);
 
@@ -294,6 +312,7 @@ impl V30MZ {
         }
     }
 
+    /// Resolve an 8-bit memory operand
     pub fn resolve_mem_src_8(&mut self, byte: u8, extra: u8) -> u8 {
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8, extra);
 
@@ -306,6 +325,7 @@ impl V30MZ {
         }
     }
 
+    /// Write a word to 16-bit destination
     pub fn write_src_to_dest_16(&mut self, dest: Operand, src: u16, extra: u8) {
         match dest {
             Operand::MEMORY => self.write_mem_operand_16(src, extra),
@@ -323,6 +343,7 @@ impl V30MZ {
         }
     }
 
+    /// Write a byte to an 8-bit operand
     pub fn write_src_to_dest_8(&mut self, dest: Operand, src: u8, extra: u8) {
         match dest {
             Operand::MEMORY => self.write_mem_operand_8(src, extra),
@@ -339,10 +360,12 @@ impl V30MZ {
         };
     }
 
+    /// Resolve a direct memory operand
     pub fn get_direct_mem_address(&mut self) -> u32 {
         u16::from_le_bytes([self.current_op[1], self.current_op[2]]) as u32
     }
 
+    /// Write a word to a 16-bit memory operand
     pub fn write_mem_operand_16(&mut self, src: u16, extra: u8) {
         let byte = self.current_op[1];
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M16, extra);
@@ -359,6 +382,7 @@ impl V30MZ {
         }
     }
 
+    /// Write a byte to an 8-bit memory operand
     pub fn write_mem_operand_8(&mut self, src: u8, extra: u8) {
         let byte = self.current_op[1];
         let (mem_operand, default_segment) = self.resolve_mem_operand(byte, Mode::M8, extra);
@@ -376,6 +400,7 @@ impl V30MZ {
         }
     }
 
+    /// Write a word to a register
     pub fn write_reg_operand_16(&mut self, src: u16, bits: u8) {
         match self.resolve_register_operand(bits, Mode::M16) {
             RegisterType::RW(r) => *r = src,
@@ -383,6 +408,7 @@ impl V30MZ {
         }
     }
 
+    /// Write a byte to the high or low byte of a register
     pub fn write_reg_operand_8(&mut self, src: u8, bits: u8) {
         match self.resolve_register_operand(bits, Mode::M8) {
             RegisterType::RW(_) => unreachable!(),
@@ -391,12 +417,14 @@ impl V30MZ {
         }
     }
 
+    /// Write a word to a segment register
     pub fn write_to_seg_operand(&mut self, src: u16) {
         let s_bits = (self.current_op[1] & 0b0001_1000) >> 3;
 
         *self.resolve_segment(s_bits) = src;
     }
 
+    /// Parse a set of three bits representing a register
     pub fn resolve_register_operand(&mut self, bits: u8, mode: Mode) -> RegisterType<'_> {
         match mode {
             Mode::M8 => match bits {
@@ -425,7 +453,11 @@ impl V30MZ {
         }
     }
 
-    // Returns the operand and its default segment's value
+    /// Resolves a mod/r/m byte's memory operand
+    ///
+    /// # Return value
+    /// 
+    /// Returns the operand and its default segment's value
     pub fn resolve_mem_operand(&mut self, byte: u8, mode: Mode, extra: u8) -> (MemOperand, u16) {
         let segment = self.DS0;
         let a = byte >> 6;
@@ -470,6 +502,7 @@ impl V30MZ {
         (MemOperand::Offset(base.wrapping_add(displacement)), result_segment)
     }
 
+    /// Match the two bits representing a segment operand to the right register
     pub fn resolve_segment(&mut self, bits: u8) -> &mut u16 {
         match bits {
             0 => &mut self.DS1,
@@ -480,6 +513,7 @@ impl V30MZ {
         }
     }
 
+    /// Gets the physical address by applying to the offset either a default segment or the segment override
     pub fn get_physical_address(&self, offset: u16, default_segment: u16) -> u32 {
         let segment = match self.segment_override {
             None => default_segment,
@@ -489,6 +523,7 @@ impl V30MZ {
         self.apply_segment(offset, segment)
     }
 
+    /// Gets the port address for the IN and OUT operations
     pub fn get_io_address(&mut self, src: Operand) -> u16 {
         // Use either the next byte padded with 0s or DW as the io_address
         match src {
@@ -498,10 +533,16 @@ impl V30MZ {
         }
     }
 
+    /// Gets the stack address by combining the `SP` and `SS` registers
     pub fn get_stack_address(&self) -> u32 {
         self.apply_segment(self.SP, self.SS)
     }
 
+    /// Applies the segment to the offset to obtain a 20-bit address
+    /// 
+    /// The formula is as follows:
+    /// 
+    /// ADDRESS = (SEGMENT << 4) + OFFSET
     pub fn apply_segment(&self, offset: u16, segment: u16) -> u32 {
         let segment = (segment as u32) << 4;
         let offset = offset as u32;

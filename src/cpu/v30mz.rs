@@ -6,85 +6,183 @@ use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConne
 
 use super::{opcode::{OpCode, CPU_OP_CODES, GROUP_1, GROUP_2, IMMEDIATE_GROUP, SHIFT_GROUP}, swap_h, swap_l, MemOperand, Mode, Operand, RegisterType};
 
+/// Utility module for the CPU
 mod util;
+/// Memory operations
 mod mem_ops;
+/// Arithmetic operations
 mod alu_ops;
+/// Bitwise operations
 mod bit_ops;
+/// Control operations
 mod ctrl_ops;
+/// Block operations
 mod block_ops;
 
 bitflags! {
-    // http://perfectkiosk.net/stsws.html
+    /// Bitflags representing the PSW
+    /// 
+    /// [WonderSwan Sacred Tech Scroll](http://perfectkiosk.net/stsws.html)
     #[derive(Copy, Clone)]
     pub struct CpuStatus: u16 {
+        #[doc(hidden)]
         const FIXED_ON_1  = 0x8000;
+        #[doc(hidden)]
         const FIXED_ON_2  = 0x4000;
+        #[doc(hidden)]
         const FIXED_ON_3  = 0x2000;
+        #[doc(hidden)]
         const FIXED_ON_4  = 0x1000;
 
-        const OVERFLOW    = 0x0800; // Set when the result of an operation is too large
-        const DIRECTION   = 0x0400; // Specifies the direction of a memory or block operation
-        const INTERRUPT   = 0x0200; // When set, interrupts will be processed
-        const BREAK       = 0x0100; // When set, after each instruction executed, an exception is raised with vector 1
+        /// Set when the result of an operation is too large
+        const OVERFLOW    = 0x0800;
+        /// Specifies the direction of a memory or block operation
+        const DIRECTION   = 0x0400;
+        /// When set, interrupts will be processed
+        const INTERRUPT   = 0x0200;
+        /// When set, after each instruction executed, an exception is raised with vector 1
+        const BREAK       = 0x0100;
 
-        const SIGN        = 0x0080; // Set when the result of an operation is negative
-        const ZERO        = 0x0040; // Set when the result of an operation is zero
+        /// Set when the result of an operation is negative
+        const SIGN        = 0x0080;
+        /// Set when the result of an operation is zero
+        const ZERO        = 0x0040;
+        #[doc(hidden)]
         const FIXED_OFF_1 = 0x0020;
-        const AUX_CARRY   = 0x0010; // Similar to CY, but applies with respect to the lowest 4 bits of the operation.
+        /// Similar to CY, but applies with respect to the lowest 4 bits of the operation.
+        const AUX_CARRY   = 0x0010;
 
         const FIXED_OFF_2 = 0x0008;
-        const PARITY      = 0x0004; // Set when the number of set bits in the lower 8 bits of an operation is even, or cleared if odd.
+        /// Set when the number of set bits in the lower 8 bits of an operation is even, or cleared if odd.
+        const PARITY      = 0x0004;
+        #[doc(hidden)]
         const FIXED_ON_5  = 0x0002;
-        const CARRY       = 0x0001; // Set when an operation produces a carry or borrows.
+        /// Set when an operation produces a carry or borrows.
+        const CARRY       = 0x0001;
     }
 }
 
+/// The WonderSwan's CPU
+/// 
+/// The NEC V30MZ processor used by the WonderSwan is a clone of the Intel 80186 CPU with some quirks preserved and some functionality removed
 pub struct V30MZ {
     // REGISTERS
 
     // GENERAL-PURPOSE
-    AW: u16, // Names ending W refer to the whole register
-    BW: u16, // Names ending in L or H refer to the low
-    CW: u16, // and high byte respectively
+
+    /// General-purpose register AW
+    /// 
+    /// High and low bytes are addressed as AH and AL respectively
+    /// 
+    /// Intel name: AX
+    AW: u16,
+    /// General-purpose register BW
+    /// 
+    /// High and low bytes are addressed as BH and BL respectively
+    /// 
+    /// Intel name: BX
+    BW: u16,
+    /// General-purpose register CW
+    /// 
+    /// High and low bytes are addressed as CH and CL respectively
+    /// 
+    /// Intel name: CX
+    CW: u16,
+    /// General-purpose register DW
+    /// 
+    /// High and low bytes are addressed as DH and DL respectively
+    /// 
+    /// Intel name: DX
     DW: u16,
 
     // SEGMENT
-    DS0: u16, // DATA SEGMENT 0
-    DS1: u16, // DATA SEGMENT 1
-    PS: u16,  // PROGRAM SEGMENT
-    SS: u16,  // STACK SEGMENT
+
+    /// Data segment register 0
+    /// 
+    /// Intel name: DS
+    DS0: u16,
+    /// Data segment register 1
+    /// 
+    /// Intel name: ES
+    DS1: u16,
+    /// Program segment register
+    /// 
+    /// Intel name: CS
+    PS: u16,
+    /// Stack segment register
+    SS: u16,
 
     // INDEX
+
+    /// Source index register
+    /// 
+    /// Intel name: SI
     IX: u16,
+    /// Destination index register
+    /// 
+    /// Intel name: DI
     IY: u16,
 
     // POINTERS
-    SP: u16, // STACK POINTER
-    BP: u16, // BASE POINTER
 
-    PC: u16, // PROGRAM COUNTER
+    /// Stack pointer register
+    SP: u16,
+    /// Base pointer register
+    BP: u16,
+
+    /// Program counter register
+    /// 
+    /// Intel name: IP
+    PC: u16,
+    /// The value to be added to PC at the end of an operation
     pc_displacement: u16,
 
-    PSW: CpuStatus, // PROGRAM STATUS WORD
+    /// Program status word, represented using the CpuStatus struct
+    /// 
+    /// Intel name: FLAGS
+    PSW: CpuStatus,
 
     // PROGRAM
+
+    /// Vector containing the currently executing operation
     pub current_op: Vec<u8>,
+    /// Optional segment override, set by certain prefixes
     segment_override: Option<u16>,
-    halt: bool, rep: bool, rep_z: bool,
+    /// Indicates that the HALT instruction has been executed
+    halt: bool,
+    /// Indicates that the REP or REPNE prefixes have been executed
+    rep: bool,
+    /// Indicates that the REP prefix has been executed
+    rep_z: bool,
+    /// Indicates that certain situations have happened where interrupts cannot be processed
     no_interrupt: bool,
 
     // MEMORY
+
+    /// A reference to the shared memory bus
     mem_bus: Rc<RefCell<MemBus>>,
+    /// A reference to the shared I/O bus
     io_bus: Rc<RefCell<IOBus>>,
 
     // MEMORY BUFFER
+
+    /// Buffer to which memory writes are written before being committed to the shared bus
     mem_buffer: HashMap<u32, u8>,
+    /// Buffer to which I/O port writes are written before being committed to the shared bus
     io_buffer: HashMap<u16, u8>,
 
     // TIMING
+
+    /// Cycles that the CPU needs to wait for before finishing its current instruction
     cycles: u8,
+    /// The base amount to be added to cycles at the end of the current op, may be increased by extra cycles
     base: u8,
 
+    /// Enable trace
+    /// 
+    /// # WARNING
+    /// 
+    /// This will absolutely destroy framerates when enabled, only meant for debugging purposes
     pub trace: bool,
 }
 
@@ -109,6 +207,7 @@ impl IOBusConnection for V30MZ {
 }
 
 impl V30MZ {
+    /// Returns a new V30MZ, requires references to the busses and a boolean to potentially enable the trace
     pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>, trace: bool) -> Self {
         Self {
             AW: 0, BW: 0, CW: 0, DW: 0,
@@ -133,6 +232,10 @@ impl V30MZ {
         }
     }
 
+    /// Ticks the CPU
+    /// 
+    /// When the `cycles` field reaches 0 it can potentially execute an instruction or poll interrupts.
+    /// Otherwise it decreases the `cycles` field, if this sets `cycles` to 0 it commits the writes scheduled by the previous instruction.
     pub fn tick(&mut self) {
         // println!("Tick: halt={}, cycles={}", self.halt, self.cycles);
         self.PSW = self.PSW.union(CpuStatus::from_bits_truncate(0xF002));
@@ -147,6 +250,9 @@ impl V30MZ {
         }
     }
 
+    /// Executes an instruction or prefix
+    /// 
+    /// If trace is enabled this will also print the currently executing instruction's first byte, address and mnemonic, along with the state of the CPU's registers
     pub fn execute(&mut self) {
         let op = self.allocate_instruction().clone();
         self.no_interrupt = false;
@@ -558,6 +664,9 @@ impl V30MZ {
         self.finish_op(old_IE);
     }
 
+    /// Resets the CPU's registers
+    /// 
+    /// This is called during the SoC's creation, it loads the registers with their normal starting values, plus some values observed in tests ran with Mesen.
     pub fn reset(&mut self) {
         self.AW = 0xFF85;
         self.BW = 0x0040;
@@ -575,10 +684,15 @@ impl V30MZ {
         self.PSW = CpuStatus::from_bits_truncate(0xF082);
     }
 
+    /// Gets the address that the program is currently executing from
     pub fn get_pc_address(&mut self) -> u32 {
         self.apply_segment(self.PC, self.PS)
     }
 
+    /// Called when a full instruction (i.e. not a prefix) completes.
+    /// 
+    /// This resets certain values that are set by prefixes, clears the `current_op` field, potentially commits writes if
+    /// the instruction lasted only one cycle, and increments the program counter, unless REP or REPNE is active and `CW` has not become 0
     fn finish_op(&mut self, old_IE: bool) {
         // if self.current_op == vec![0x81, 0xC6, 0x00, 0x40] && self.IX == 0x5000 {self.trace = true}
         self.no_interrupt = (self.PSW.contains(CpuStatus::INTERRUPT) != old_IE) && !old_IE;
@@ -601,6 +715,9 @@ impl V30MZ {
         }
     }
 
+    /// Called when a prefix completes
+    /// 
+    /// This increments the program counter by one, clears the current op and tells the CPU not to accept interrupts.
     fn finish_prefix(&mut self) {
         self.PSW = CpuStatus::from_bits_truncate(self.PSW.bits() | 0xF002);
         self.PC = self.PC.wrapping_add(1);
@@ -613,6 +730,9 @@ impl V30MZ {
         self.no_interrupt = true;
     }
 
+    /// Raises exception with the given vector
+    /// 
+    /// This will read two words from memory at the address given by the vector * 4 and assign the first two `PC` and the second to `PS`
     fn raise_exception(&mut self, vector: u8) {
         self.PC = self.PC.wrapping_add(self.pc_displacement);
         if self.trace {println!("Exception raised: vector={:02X}. Pushing PSW={:016b} PS={:04X}, PC={:04X}", vector, self.PSW.bits(), self.PS, self.PC)}
@@ -630,6 +750,7 @@ impl V30MZ {
         if self.trace {println!("New values: PSW={:016b} PS={:04X}, PC={:04X}", self.PSW.bits(), self.PS, self.PC)}
     }
 
+    /// Polls the I/O bus to see if other components have requested interrupts
     fn poll_interrupts(&mut self) -> bool {
         let nmi = self.read_io(0xB7) != 0;
         let cause = self.read_io(0xB4);
@@ -651,6 +772,7 @@ impl V30MZ {
         false
     }
 
+    /// Commits writes at the end of an instruction
     fn commit_writes(&mut self) {
         for (addr, byte) in &self.mem_buffer {
             self.mem_bus.borrow_mut().write_mem(*addr, *byte);
@@ -662,6 +784,7 @@ impl V30MZ {
         self.io_buffer.clear();
     }
 
+    #[doc(hidden)]
     #[cfg(test)]
     pub fn tick_ignore_cycles(&mut self) {
         if !self.rep {if self.poll_interrupts() {return}};

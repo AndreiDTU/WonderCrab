@@ -35,6 +35,12 @@ pub mod bus;
 #[allow(non_snake_case)]
 pub mod cartridge;
 
+/// This module contains the WonderSwan's CPU
+/// 
+/// This file's contents specifically are made up of things that would be useful to both defining the opcodes and operating the CPU
+#[allow(non_snake_case)]
+pub mod cpu;
+
 pub mod soc;
 pub mod dma;
 pub mod sound;
@@ -42,9 +48,6 @@ pub mod sound;
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 pub mod display;
-
-#[allow(non_snake_case)]
-pub mod cpu;
 
 /// Width of the window that appears when you run the program
 const WINDOW_WIDTH: u32 = 1344;

@@ -3,6 +3,9 @@ use crate::cpu::parity;
 use super::*;
 
 impl V30MZ {
+    /// AND instruction
+    /// 
+    /// op1 &= op2
     pub fn and(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -37,6 +40,9 @@ impl V30MZ {
         }
     }
 
+    /// NOT instruction
+    /// 
+    /// Inverts the bits at a memory address
     pub fn not(&mut self, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -51,6 +57,9 @@ impl V30MZ {
         }
     }
 
+    /// OR instruction
+    /// 
+    /// op1 |= op2
     pub fn or(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -85,6 +94,9 @@ impl V30MZ {
         }
     }
 
+    /// ROL instruction
+    /// 
+    /// Rotates the value at a memory address left by the source
     pub fn rol(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
@@ -117,6 +129,12 @@ impl V30MZ {
         }
     }
 
+    /// ROLC instruction
+    /// 
+    /// Forms a 9/17-bit value by combining the value read from a memory address with a higher bit given by the carry flag.
+    /// Rotates this value left by the source and stores the result into the CARRY bit and the address.
+    /// 
+    /// Intel name: RCL
     pub fn rolc(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
@@ -153,6 +171,9 @@ impl V30MZ {
         }
     }
 
+    /// ROR instruction
+    /// 
+    /// Rotates the value at a memory address right by the source
     pub fn ror(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
@@ -185,6 +206,12 @@ impl V30MZ {
         }
     }
 
+    /// RORC instruction
+    /// 
+    /// Forms a 9/17-bit value by combining the value read from a memory address with a higher bit given by the carry flag.
+    /// Rotates this value right by the source and stores the result into the CARRY bit and the address.
+    /// 
+    /// Intel name: RCR
     pub fn rorc(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
@@ -221,6 +248,9 @@ impl V30MZ {
         }
     }
 
+    /// SHL instruction
+    /// 
+    /// memory <<= source
     pub fn shl(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
@@ -261,6 +291,9 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::AUX_CARRY);
     }
 
+    /// SHR instruction
+    /// 
+    /// memory >>= source
     pub fn shr(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
@@ -295,6 +328,11 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::AUX_CARRY);
     }
 
+    /// SHRA instruction (signed shift right)
+    /// 
+    /// memory >>= source
+    /// 
+    /// Intel name: SAR
     pub fn shra(&mut self, code: u8, mode: Mode, extra: u8) {
         let src = self.get_rot_src(code);
 
@@ -343,6 +381,9 @@ impl V30MZ {
         self.PSW.remove(CpuStatus::AUX_CARRY);
     }
 
+    /// TEST instruction
+    /// 
+    /// Updates flags according to op1 & op2 and discards the result
     pub fn test(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {
@@ -373,6 +414,9 @@ impl V30MZ {
         }
     }
 
+    /// XOR instruction
+    /// 
+    /// op1 ^= op2
     pub fn xor(&mut self, op1: Operand, op2: Operand, mode: Mode, extra: u8) {
         match mode {
             Mode::M8 => {

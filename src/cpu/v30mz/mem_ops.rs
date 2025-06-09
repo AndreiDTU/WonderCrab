@@ -1,6 +1,9 @@
 use super::*;
 
 impl V30MZ {
+    /// PUSH instruction
+    /// 
+    /// Resolves the `src` operand and pushes it to the stack
     pub fn push_op(&mut self, src: Operand, extra: u8) {
         // Stores a 16-bit value on the stack.
         let src = match src {
@@ -22,6 +25,12 @@ impl V30MZ {
         self.push(src);
     }
 
+    /// PUSH R instruction
+    /// 
+    /// Pushes the general purpose registers, the a copy of the `SP` as it was before beginning
+    /// the operation, the `BP` and the `IX` and `IY` registers to the stack.
+    /// 
+    /// Intel name: PUSHA
     pub fn push_r(&mut self) {
         let temp = self.SP;
         self.push(self.AW);
@@ -34,6 +43,9 @@ impl V30MZ {
         self.push(self.IY);
     }
 
+    /// POP instruction
+    /// 
+    /// Pops a word from the stack and then resolve the destination operand in order to store it
     pub fn pop_op(&mut self, dest: Operand, extra: u8) {
         // Retrieves a 16-bit value from the stack and stores it in the operand.
         let src = self.pop();
@@ -58,6 +70,12 @@ impl V30MZ {
         };
     }
 
+    /// POP R instruction
+    /// 
+    /// Pops the `IY`, `IX` and `BP` registers, the `SP` is incremented by 2, and then the general purpose
+    /// registers are also popped.
+    /// 
+    /// Intel name: POPA
     pub fn pop_r(&mut self) {
         // println!("POP R");
         // println!("SP before: {:04X}", self.SP);
@@ -73,6 +91,10 @@ impl V30MZ {
         // println!("BW {:04X} DW {:04X} CW {:04X} AW {:04X}", self.BW, self.DW, self.CW, self.AW);
     }
 
+    /// MOV instruction
+    /// 
+    /// Transfers data from one operand to another. In the case of 32-bit MOV it transfers from a memory
+    /// address into a register operand and either the `DS0` or `DS1` segment registers.
     pub fn mov(&mut self, operation: &OpCode, extra: u8) {
         // Copies the value of op2 to op1
         // or reads two u16s from op3 and copies their values to op1 and op2
@@ -123,6 +145,13 @@ impl V30MZ {
         }
     }
 
+    /// LDEA instruction (Load effective address)
+    /// 
+    /// Resolves the mod/r/m byte and copies the result to a register:
+    /// - If the mod/r/m byte resolves to an offset, stores the offset.
+    /// - If a register copies the value stored in the register.
+    /// 
+    /// Intel name: LEA
     pub fn ldea(&mut self, extra: u8) {
         // Calculates the offset of a memory operand and stores
         // the result into a 16-bit register.
@@ -141,6 +170,11 @@ impl V30MZ {
         self.write_reg_operand_16(src, bits);
     }
 
+    /// CVTBW instruction (convert byte to word)
+    /// 
+    /// Sign extends AL into AW
+    /// 
+    /// Intel name: CBW
     pub fn cvtbw(&mut self) {
         // Sign-extends AL into AW. If the highest bit of AL is clear,
         // stores 0x00 into AH. Otherwise, stores 0xFF into AH.
@@ -153,6 +187,11 @@ impl V30MZ {
         }
     }
 
+    /// CVTWL instruction (convert word to long)
+    /// 
+    /// Sign extends AW into DW,AW
+    /// 
+    /// Intel name: CWD
     pub fn cvtwl(&mut self) {
         // Sign-extends AW into DW,AW. If the highest bit of AW is clear,
         // stores 0x0000 into DW. Otherwise, stores 0xFFFF into DW.
@@ -161,6 +200,11 @@ impl V30MZ {
         self.DW = if sign {0xFFFF} else {0x0000};
     }
 
+    /// SALC instruction (set AL on carry)
+    /// 
+    /// `AL <- carry ? 0xFF : 0x00`
+    /// 
+    /// This was originally an undocumented instruction
     pub fn salc(&mut self) {
         // Sets AL according to the status of CY. If CY is clear,
         // stores 0x00 into AL. Otherwise, stores 0xFF into AL. 
@@ -171,6 +215,11 @@ impl V30MZ {
         }
     }
 
+    /// TRANS instruction
+    /// 
+    /// `AL <- [BW + AL]`
+    /// 
+    /// Intel name: XLAT
     pub fn trans(&mut self) {
         // Calculates a memory offset as the unsigned sum of BW and AL,
         // and loads the byte at that offset into AL.
@@ -179,6 +228,9 @@ impl V30MZ {
         self.AW = swap_l(self.AW, self.read_mem(addr));
     }
 
+    /// IN instruction
+    /// 
+    /// Reads the I/O port indicated by `src` and stores the result into `AW`
     pub fn in_op(&mut self, mode: Mode, src: Operand) {
         // Inputs the value from the I/O port pointed to by src and stores it into AL.
         // If 16-bit, inputs the value from the I/O port pointed to by src + 1 and stores it into AH.
@@ -203,6 +255,9 @@ impl V30MZ {
         }
     }
 
+    /// OUT instruction
+    /// 
+    /// Stores `AW` into the port indicated by `dest`
     pub fn out_op(&mut self, mode: Mode, dest: Operand) {
         // Outputs the value of AL to the I/O port pointed to by dest.
         // If 16-bit, outputs the value of AH to the I/O port pointed to by dest + 1.
@@ -215,6 +270,11 @@ impl V30MZ {
         }
     }
     
+    /// XCH instruction
+    /// 
+    /// Switches the values of `op1` and `op2`
+    /// 
+    /// Intel name: XCHG
     pub fn xch(&mut self, mode: Mode, op1: Operand, op2: Operand, extra: u8) {
         // Exchanges the values stored in the operands. 
 
