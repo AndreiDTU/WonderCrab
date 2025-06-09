@@ -29,6 +29,12 @@ static GLOBAL: MiMalloc = MiMalloc;
 /// references can be shared between the different components, mimicking the
 /// system's original architecture.
 pub mod bus;
+
+/// This module contains the cartridge
+#[allow(non_camel_case_types)]
+#[allow(non_snake_case)]
+pub mod cartridge;
+
 pub mod soc;
 pub mod dma;
 pub mod sound;
@@ -36,10 +42,6 @@ pub mod sound;
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 pub mod display;
-
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
-pub mod cartridge;
 
 #[allow(non_snake_case)]
 pub mod cpu;
