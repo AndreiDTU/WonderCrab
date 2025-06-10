@@ -1,6 +1,6 @@
 # About
 
-This is a WonderSwan emulator I coded in Rust as an exercise, it is not very accurate and has very poor framerates.
+This is a WonderSwan emulator I coded in Rust as an exercise. It is not very accurate and has very poor framerates.
 Only some commercial games are capable or running at a playable framerate and with no major glitches.
 This project might be of interest to people working on similar projects, or as a base for a more accurate and better optimized emulator.
 
@@ -17,3 +17,5 @@ This project might be of interest to people working on similar projects, or as a
 [Mesen](https://www.mesen.ca/)
 
 [Ares](https://ares-emu.net/)
+
+Special thanks to the SDL team.
