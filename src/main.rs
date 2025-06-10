@@ -123,7 +123,7 @@ fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let window = video_subsystem
-        .window("WonderSwan", WINDOW_WIDTH, WINDOW_HEIGHT)
+        .window("WonderCrab", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .build().unwrap();
 
