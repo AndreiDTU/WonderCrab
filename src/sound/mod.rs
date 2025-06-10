@@ -4,41 +4,64 @@ use bitflags::bitflags;
 
 use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}}, sound::channel::Channel};
 
+/// Channel module
+/// 
+/// This channel only handles the operation of modules as waveform samplers, it does not module the noise, sweep or voice features.
 mod channel;
 
 bitflags! {
+    /// The sound chip's control byte
     #[derive(Clone, Copy)]
     pub struct SoundControl: u8 {
+        /// Channel 4's output is overwritten with output determined by the LSFR
         const NOISE = 0b1000_0000;
+        /// Channel 3's frequency is periodically changed
         const SWEEP = 0b0100_0000;
+        /// Channel 2's output is overwritten with 8-bit audio samples and its volume is determined differently
         const VOICE = 0b0010_0000;
         
+        /// Channel 4 enabled
         const Enb4 = 0b0000_1000;
+        /// Channel 3 enabled
         const Enb3 = 0b0000_0100;
+        /// Channel 2 enabled
         const Enb2 = 0b0000_0010;
+        /// Channel 1 enabled
         const Enb1 = 0b0000_0001;
     }
 }
 
 pub struct Sound {
+    /// A reference to the shared memory bus
     mem_bus: Rc<RefCell<MemBus>>,
+    /// A reference to the shared I/O bus
     io_bus: Rc<RefCell<IOBus>>,
 
+    /// Channel 1
     channel_1: Channel,
+    /// Channel 2 (voice)
     channel_2: Channel,
+    /// Channel 3 (sweep)
     channel_3: Channel,
+    /// Channel 4 (noise)
     channel_4: Channel,
 
+    /// Control flags
     control: SoundControl,
 
+    /// Time spent since last sweep tick
     sweep_clock: usize,
+    /// Time spent since last sweep operation
     step_clock: usize,
 
+    /// Time spent since last LSFR change
     noise_clock: u16,
+    /// Channel 4 base volume as determined by LSFR
     noise: Option<u8>,
 }
 
 impl Sound {
+    /// Generates a new sound chip
     pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
         let [channel_1, channel_2, channel_3, channel_4] = [Channel::new(); 4];
         Self {
@@ -53,6 +76,7 @@ impl Sound {
         }
     }
 
+    /// Ticks the sound chip by one cycle
     pub fn tick(&mut self) -> (u16, u16) {
         self.control = SoundControl::from_bits_truncate(self.read_io(0x90));
         self.sweep();
@@ -106,6 +130,9 @@ impl Sound {
         }
     }
 
+    /// Ticks all the channels and returns an array of their outputs.
+    /// 
+    /// Takes the voice and noise features into account
     fn channel_outputs(&mut self) -> [u8; 4] {
         let sample_2 = if self.control.contains(SoundControl::Enb2) {
             self.channel_2.tick()
@@ -134,6 +161,7 @@ impl Sound {
         ]
     }
 
+    /// Load the waveform data into the channels
     fn load_waveforms(&mut self) {
         let wave_p = self.read_io(0x8F) as u32;
         let base = wave_p << 6;
@@ -151,6 +179,7 @@ impl Sound {
         self.channel_4.waveform = groups[3];
     }
 
+    /// Load the frequency data into the channels
     fn load_frequencies(&mut self) {
         let frequencies: [u16; 4] = std::array::from_fn(|i| {
             let (lo, hi) = self.read_io_16(0x80 + (i * 2) as u16);
@@ -163,6 +192,7 @@ impl Sound {
         self.channel_4.frequency = 2048 - frequencies[3];
     }
 
+    /// Ticks the sweep clock and potentially ticks the sweep unit
     fn sweep(&mut self) {
         if self.control.contains(SoundControl::SWEEP) && self.control.contains(SoundControl::Enb3) {
             self.sweep_clock += 1;
@@ -187,6 +217,7 @@ impl Sound {
         }
     }
 
+    /// Ticks the noise unit if channel 4 is enabled and the noise flag is set
     fn noise(&mut self) {
         if self.control.contains(SoundControl::NOISE) && self.control.contains(SoundControl::Enb4) {
             let noise_ctrl = self.read_io(0x8E);

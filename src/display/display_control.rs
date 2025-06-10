@@ -4,36 +4,68 @@ use crate::bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConne
 
 use super::{screen::ScreenElement, sprite::SpriteElement, PaletteFormat};
 
+/// WonderSwan display chip
+/// 
+/// This struct handles the interpretation of tile and color data
+/// 
+/// # OPTIMIZATION
+/// 
+/// This file is by far the most expensive to run in the whole program.
+/// Small optimizations here can have major benefits.
 pub struct Display {
+    /// A reference to the shared memory bus
     mem_bus: Rc<RefCell<MemBus>>,
+    /// A reference to the shared I/O bus
     io_bus: Rc<RefCell<IOBus>>,
 
+    /// The format used for decoding color data
     format: PaletteFormat,
+    /// Whether or not color mode is turned on
     color: bool,
 
+    /// The base address for reading screen 1
     screen_1_base: u16,
+    /// The base address for reading screen 2
     screen_2_base: u16,
+    /// The base address for reading sprites
     sprite_base: u16,
 
+    /// Array of screen 1's elements
     screen_1_elements: [[ScreenElement; 32]; 32],
+    /// Array of screen 2's elements
     screen_2_elements: [[ScreenElement; 32]; 32],
 
+    /// Array of screen 1's tiles
     screen_1_tiles: [[[[u8; 8]; 8]; 32]; 32],
+    /// Array of screen 2's tiles
     screen_2_tiles: [[[[u8; 8]; 8]; 32]; 32],
 
+    /// Array of screen 2's pixels
     screen_2_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
 
+    /// Array of sprites
     sprite_table: [SpriteElement; 128],
+    /// Array of sprite tiles
     sprite_tiles: [[[u8; 8]; 8]; 128],
+    /// Array of pixels displayed to the sprite plane
     sprite_pixels: Box<[[Option<(u8, u8, u8)>; 256]; 256]>,
-    sprite_counter: u8, finished_sprites: bool,
+    /// Number of sprites to read
+    sprite_counter: u8,
+    /// Indicates that there are no more sprites to read on the current frame
+    finished_sprites: bool,
 
+    /// Representation of the LCD that is shared with main and used for display.
+    /// Each three bytes in this array represent one pixel's RGB24 value
     shared_lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>,
+    /// A buffer to which the frame is written before being transferred to the larger buffer
     lcd: Box<[u8; 3 * 224 * 144]>,
 
+    /// Current scanline
     scanline: u8,
+    /// Current dot
     cycle: u8,
 
+    /// The color-map of the current scanline, `None` represents a transparent pixel
     color_map: [[Option<(u8, u8, u8)>; 16]; 16],
 }
 
@@ -58,6 +90,7 @@ impl IOBusConnection for Display {
 }
 
 impl Display {
+    /// Generates a new display chip, requires references to shared resources
     pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>, shared_lcd: Rc<RefCell<[u8; 3 * 224 * 144]>>) -> Self {
         let format = io_bus.borrow_mut().palette_format();
         let color = io_bus.borrow_mut().color_mode();
@@ -81,6 +114,7 @@ impl Display {
         }
     }
 
+    /// Moves the display one dot further along, fetches data, potentially changes scanlines, may trigger interrupts and calls functions to place pixels.
     pub fn tick(&mut self) {
         self.color = self.io_bus.borrow_mut().color_mode();
         self.format = self.io_bus.borrow_mut().palette_format();
@@ -208,26 +242,31 @@ impl Display {
         self.cycle = self.cycle.wrapping_add(1);
     }
 
+    /// Reads the base address for screen 1 from the appropriate I/O port
     fn get_screen_1_base(&mut self) {
         self.screen_1_base = ((self.io_bus.borrow_mut().read_io(0x07) & 0x0F) as u16) << 11;
         if !self.color {self.screen_1_base &= 0x3800}
         // println!("Screen 1 base: {:014X}", self.screen_1_base);
     }
 
+    /// Reads the base address for screen 2 from the appropriate I/O port
     fn get_screen_2_base(&mut self) {
         self.screen_2_base = (((self.io_bus.borrow_mut().read_io(0x07) >> 4) & 0x0F) as u16) << 11;
         if !self.color {self.screen_2_base &= 0x3800}
     }
 
+    /// Reads the base address for sprites from the appropriate I/O port
     fn get_sprite_base(&mut self) {
         self.sprite_base = ((self.read_io(0x04) & 0x3F) as u16) << 9;
         if !self.color {self.sprite_base &= 0x3E00}
     }
 
+    /// Reads the sprite count from the appropriate I/O port
     fn get_sprite_counter(&mut self) {
         self.sprite_counter = self.read_io(0x06) & 0x7F;
     }
 
+    /// Reads a tile of 8x8 pixels and returns a 2D array containing indices that can be used to fetch RGB values from the color map
     fn read_tile(&mut self, index: u16, format: PaletteFormat) -> [[u8; 8]; 8] {
         std::array::from_fn(|row| {
             match format {
@@ -271,6 +310,7 @@ impl Display {
         })
     }
 
+    /// Reads a screen element from the address
     fn read_screen_element(&mut self, addr: u16) -> ScreenElement {
         let addr = addr as u32;
         let color = self.color;
@@ -288,6 +328,7 @@ impl Display {
         ScreenElement::new(vm, hm, palette, tile_idx)
     }
 
+    /// Reads a sprite from the address
     fn read_sprite(&mut self, addr: u16) -> SpriteElement {
         let base = addr as u32;
 
@@ -322,6 +363,12 @@ impl Display {
     }
     */
 
+    /// Places a pixel on the LCD at coordinates (x,y)
+    /// 
+    /// # Optimization
+    /// 
+    /// This function alone accounted for over 60% of the application's runtime in an older test.
+    /// That test was performed before adding sprites. Any optimizations made to this function will drastically improve performance.
     fn overlay_pixels(&mut self, x: u8, y: u8) {
         let (lo, hi) = self.io_bus.borrow_mut().read_io_16(0x00);
         let lcd_ctrl = u16::from_le_bytes([lo, hi]);
@@ -443,6 +490,7 @@ impl Display {
             self.lcd[dot + 2] = pixel.2;
     }
 
+    /// Finds the RGB value of a pixel on screen 2 or None if the pixel is transparent or clipped by the window
     fn apply_scr2_window(&mut self, s2we: bool, s2wc: bool, x: u8, y: u8) -> Option<(u8, u8, u8)> {
         let scroll_x = self.read_io(0x12);
         let scroll_y = self.read_io(0x13);
@@ -474,6 +522,7 @@ impl Display {
         }
     }
 
+    /// Caches the color map at the time that this function is invoked
     fn generate_color_map(&mut self) {
         self.color_map = std::array::from_fn(|palette| {
             std::array::from_fn(|raw_px| {
@@ -493,6 +542,7 @@ impl Display {
         });
     }
 
+    /// Returns the RGB value of a monochrome WonderSwan pixel
     fn get_monochrome_palette(&mut self, palette: u8) -> [(u8, u8, u8); 4] {
         // if palette != 0 {println!("{}", palette)}
         let (lo, hi) = self.read_io_16(0x20 + (palette as u16) * 2);
@@ -511,6 +561,7 @@ impl Display {
         })
     }
 
+    /// Returns the RGB value of a color mode pixel
     fn get_color_palette(&mut self, palette: u8) -> [(u8, u8, u8); 16] {
         let base = 0x0FE00 + (palette as u32) * 32;
 
@@ -521,6 +572,7 @@ impl Display {
         })
     }
 
+    #[doc(hidden)]
     pub fn debug_screen_1(&mut self) {
         let element = self.screen_1_elements[0][0];
         println!("Element: {:#?}", element);
@@ -532,6 +584,7 @@ impl Display {
         println!("Scroll 1 x: {} y: {}", self.read_io(0x10), self.read_io(0x11));
     }
 
+    #[doc(hidden)]
     pub fn debug_screen_2(&mut self) {
         let element = self.screen_2_elements[13][9];
         println!("Element: {:#?}", element);
@@ -543,6 +596,7 @@ impl Display {
         println!("Scroll 1 x: {} y: {}", self.read_io(0x10), self.read_io(0x11));
     }
 
+    #[doc(hidden)]
     pub fn debug_sprites(&mut self) {
         let sprite = self.sprite_table[0];
         println!("Sprite: {:#?}", sprite);

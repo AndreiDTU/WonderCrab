@@ -2,23 +2,50 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection}}, dma::DMA};
 
+/// Sound DMA
+/// 
+/// This component is used for transferring 8-bit audio samples into channel 2, used mainly for voice clips
 pub struct SDMA {
+    /// A reference to the shared memory bus
     mem_bus: Rc<RefCell<MemBus>>,
+    /// A reference to the shared I/O bus
     io_bus: Rc<RefCell<IOBus>>,
 
+    /// Cycles until the current transfer completes
     pub cycles: u8,
 
+    /// Source address, the address from which the DMA should read
     src_addr: u32,
+    /// Amount of bytes to be transferred
     counter: u32,
 
+    /// Shadow of the source address
     src_shadow: u32,
+    /// Shadow of the counter
     counter_shadow: u32,
 
+    /// Direction flag
+    /// 
+    /// If set the addresses will be decremented after each transfer, otherwise they will be incremented.
     dir: bool,
+    /// Repeat flag
+    /// 
+    /// If set, once the counter has ticked down to 0, the counter and source address will be reset based on their shadows
     rep: bool,
+    /// Hold flag
+    /// 
+    /// If set, the counter and source will not be changed on each tick and the DMA will output 0
     hold: bool,
-    pub rate: u8, // SDMA will only change sample once in every 128 * rate ticks
+    /// The rate at which samples should change
+    /// 
+    /// Samples change at 24kHz / rate or once every 128 * rate ticks
+    pub rate: u8,
 
+    /// Running flag
+    /// 
+    /// Is set at the start of each operation. Is cleared at the end of each operation.
+    /// 
+    /// If not set, then the source address and counter getters will also write to the shadow.
     running: bool,
 }
 
@@ -104,6 +131,7 @@ impl DMA for SDMA {
 }
 
 impl SDMA {
+    /// Generates a new SDMA
     pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
         Self {
             mem_bus, io_bus,
@@ -119,6 +147,7 @@ impl SDMA {
         }
     }
 
+    /// Reads the counter from the appropriate I/O ports
     fn get_counter(&mut self) {
         let (lo, hi) = self.read_io_16(0x4E);
         let offset = u16::from_le_bytes([lo, hi]) as u32;
@@ -127,6 +156,7 @@ impl SDMA {
         if !self.running {self.counter_shadow = self.counter};
     }
 
+    /// Writes the counter to the appropriate I/O ports
     fn write_counter(&mut self) {
         let offset = self.counter as u16;
         let segment = ((self.counter >> 16) & 0x0F) as u8;
@@ -134,6 +164,7 @@ impl SDMA {
         self.write_io(0x50, segment);
     }
 
+    /// Reads the source address from the appropriate I/O ports
     fn get_src_addr(&mut self) {
         let (lo, hi) = self.read_io_16(0x4A);
         let offset = u16::from_le_bytes([lo, hi]) as u32;
@@ -142,6 +173,7 @@ impl SDMA {
         if !self.running {self.src_shadow = self.src_addr};
     }
 
+    /// Writes the source address to the appropriate I/O port
     fn write_src_addr(&mut self) {
         let offset = self.counter as u16;
         let segment = ((self.counter >> 16) & 0x0F) as u8;

@@ -253,6 +253,16 @@ impl V30MZ {
     /// Executes an instruction or prefix
     /// 
     /// If trace is enabled this will also print the currently executing instruction's first byte, address and mnemonic, along with the state of the CPU's registers
+    /// 
+    /// # Panics
+    /// 
+    /// This will panic when running the opcode 0xFF,0xFF this is because it is an undocumented instruction rarely seen in actual software,
+    /// many ROMs also use 0xFF bytes for padding, so crashing when reaching this value is a way to ensure the program stops execution when
+    /// something has gone wrong during execution
+    /// 
+    /// # TODO
+    /// 
+    /// Implement undocumented instructions
     pub fn execute(&mut self) {
         let op = self.allocate_instruction().clone();
         self.no_interrupt = false;

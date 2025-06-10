@@ -41,13 +41,21 @@ pub mod cartridge;
 #[allow(non_snake_case)]
 pub mod cpu;
 
-pub mod soc;
-pub mod dma;
-pub mod sound;
-
+/// This module contains the WonderSwan's display chip
+/// 
+/// Actually displaying the screen to the Window is hadnled through SDL in main
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 pub mod display;
+
+/// The WonderSwan color and WonderCrystal DMAs
+pub mod dma;
+
+/// System on a chip
+pub mod soc;
+
+/// The WonderSwan's sound chip
+pub mod sound;
 
 /// Width of the window that appears when you run the program
 const WINDOW_WIDTH: u32 = 1344;

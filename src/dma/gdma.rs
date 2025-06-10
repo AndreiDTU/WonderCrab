@@ -2,15 +2,31 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{bus::{io_bus::{IOBus, IOBusConnection}, mem_bus::{MemBus, MemBusConnection, Owner}}, dma::DMA};
 
+/// General DMA
+/// 
+/// This component is used for bulk data transfers.
 pub struct GDMA {
+    /// A reference to the shared memory bus
     mem_bus: Rc<RefCell<MemBus>>,
+    /// A reference to the shared I/O bus
     io_bus: Rc<RefCell<IOBus>>,
 
+    /// Cycles before the current operation completes
     pub cycles: u8,
 
+    /// Source address, the address from which the DMA should read
+    /// 
+    /// Operation will not start if this is set to SRAM. It will also end immediately if it enters SRAM during the operation.
     src_addr: u32,
+    /// Destination address to which the DMA should write
+    /// 
+    /// Will always be in WRAM
     dest_addr: u16,
+    /// Amount of bytes to be transferred
     counter: u16,
+    /// Direction flag
+    /// 
+    /// If set the addresses will be decremented after each transfer, otherwise they will be incremented.
     dir: bool,
 }
 
@@ -100,10 +116,12 @@ impl DMA for GDMA {
 }
 
 impl GDMA {
+    /// Generates a new GDMA
     pub fn new(mem_bus: Rc<RefCell<MemBus>>, io_bus: Rc<RefCell<IOBus>>) -> Self {
         Self {mem_bus, io_bus, cycles: 0, src_addr: 0, dest_addr: 0, counter: 0, dir: false}
     }
 
+    /// Reads the source address from the appropriate I/O ports
     fn get_src_addr(&mut self) {
         let (lo, hi) = self.read_io_16(0x40);
         let offset = u16::from_le_bytes([lo, hi]) as u32;
@@ -111,11 +129,13 @@ impl GDMA {
         self.src_addr = (segment << 16) | offset;
     }
 
+    /// Reads the destination address from the appropriate I/O ports
     fn get_dest_addr(&mut self) {
         let (lo, hi) = self.read_io_16(0x44);
         self.dest_addr = u16::from_le_bytes([lo, hi]);
     }
 
+    /// Reads the counter from the appropriate I/O ports
     fn get_counter(&mut self) {
         let (lo, hi) = self.read_io_16(0x46);
         self.counter = u16::from_le_bytes([lo, hi]);
